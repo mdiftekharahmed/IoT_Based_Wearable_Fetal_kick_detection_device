@@ -258,12 +258,26 @@ QueueHandle_t sdCommandQueue;
 // FUNCTION DECLARATIONS
 // ============================================================
 
-void initMPU6050();
-void readMPU6050();
+// ------------------------------------------------------------
+// GY-87 (MPU6050 + BMP180) TEMPORARILY DISABLED
+//
+// The GY-87 module is physically damaged / not connected.
+// Its function bodies are commented out at the bottom of this
+// file, and every call site is commented out as well, so the
+// sketch links and runs on MAX30100 + vibration + SD + BT only.
+//
+// TO RE-ENABLE later: uncomment (1) these declarations,
+// (2) the function bodies below, and (3) the call sites in
+// setup() and sensorTask(). Nothing else needs to change --
+// the CSV columns and SensorData struct already have slots
+// for the MPU/BMP values (they just log 0 while disabled).
+// ------------------------------------------------------------
+// void initMPU6050();
+// void readMPU6050();
 
-void initBMP180();
-void startBMPTemperature();
-void processBMP180();
+// void initBMP180();
+// void startBMPTemperature();
+// void processBMP180();
 
 void measureVibration();
 
@@ -394,34 +408,32 @@ void setup()
         );
 
     // ========================================================
-    // MPU6050
+    // MPU6050  (DISABLED - GY-87 damaged)
     // ========================================================
 
-        initMPU6050();
+        // initMPU6050();
 
     // ========================================================
     // BMP180
     // ========================================================
 
         Serial.println();
-        Serial.println("Initializing BMP180...");
+        Serial.println("BMP180 DISABLED (GY-87 damaged)");
 
-        GYWire.beginTransmission(0x77);
-
-        if (GYWire.endTransmission() == 0)
-        {
-            Serial.println(
-                "BMP180 detected"
-            );
-
-            initBMP180();
-        }
-        else
-        {
-            Serial.println(
-                "BMP180 NOT FOUND"
-            );
-        }
+        // GY-87 probe + calibration disabled while the module is out.
+        // Re-enable by uncommenting this block:
+        //
+        // GYWire.beginTransmission(0x77);
+        //
+        // if (GYWire.endTransmission() == 0)
+        // {
+        //     Serial.println("BMP180 detected");
+        //     initBMP180();
+        // }
+        // else
+        // {
+        //     Serial.println("BMP180 NOT FOUND");
+        // }
 
     // ========================================================
     // VIBRATION
@@ -826,7 +838,8 @@ void sensorTask(void *parameter){
             lastMPU +=
                 MPU_INTERVAL_MS;
 
-            readMPU6050();
+            // readMPU6050();  // DISABLED - GY-87 damaged
+                               // accelX/Y/Z, gyroX/Y/Z, mpuTemperature stay 0
 
             // ====================================================
             // CREATE LOG SAMPLE
@@ -914,10 +927,10 @@ void sensorTask(void *parameter){
         }
 
         // ========================================================
-        // BMP180
+        // BMP180  (DISABLED - GY-87 damaged)
         // ========================================================
 
-        processBMP180();
+        // processBMP180();
 
         if (
             now - lastBMP >=
@@ -932,7 +945,7 @@ void sensorTask(void *parameter){
                 BMP_IDLE
             )
             {
-                startBMPTemperature();
+                // startBMPTemperature();
             }
         }
 
@@ -2298,589 +2311,589 @@ void printSystemStatus(){
 // MPU6050 INITIALIZATION
 // ============================================================
 
-void initMPU6050(){
-    Serial.print(
-        "Initializing MPU6050... "
-    );
+// void initMPU6050(){
+//     Serial.print(
+//         "Initializing MPU6050... "
+//     );
 
-    GYWire.beginTransmission(
-        0x68
-    );
+//     GYWire.beginTransmission(
+//         0x68
+//     );
 
-    if (
-        GYWire.endTransmission() != 0
-    )
-    {
-        Serial.println(
-            "FAILED"
-        );
+//     if (
+//         GYWire.endTransmission() != 0
+//     )
+//     {
+//         Serial.println(
+//             "FAILED"
+//         );
 
-        return;
-    }
+//         return;
+//     }
 
-    Serial.println(
-        "OK"
-    );
+//     Serial.println(
+//         "OK"
+//     );
 
-    // Wake MPU6050
+//     // Wake MPU6050
 
-    GYWire.beginTransmission(
-        0x68
-    );
+//     GYWire.beginTransmission(
+//         0x68
+//     );
 
-    GYWire.write(
-        0x6B
-    );
+//     GYWire.write(
+//         0x6B
+//     );
 
-    GYWire.write(
-        0x00
-    );
+//     GYWire.write(
+//         0x00
+//     );
 
-    GYWire.endTransmission();
+//     GYWire.endTransmission();
 
-    // Accelerometer ±8G
+//     // Accelerometer ±8G
 
-    GYWire.beginTransmission(
-        0x68
-    );
+//     GYWire.beginTransmission(
+//         0x68
+//     );
 
-    GYWire.write(
-        0x1C
-    );
+//     GYWire.write(
+//         0x1C
+//     );
 
-    GYWire.write(
-        0x10
-    );
+//     GYWire.write(
+//         0x10
+//     );
 
-    GYWire.endTransmission();
+//     GYWire.endTransmission();
 
-    // Gyroscope ±500 deg/s
+//     // Gyroscope ±500 deg/s
 
-    GYWire.beginTransmission(
-        0x68
-    );
+//     GYWire.beginTransmission(
+//         0x68
+//     );
 
-    GYWire.write(
-        0x1B
-    );
+//     GYWire.write(
+//         0x1B
+//     );
 
-    GYWire.write(
-        0x08
-    );
+//     GYWire.write(
+//         0x08
+//     );
 
-    GYWire.endTransmission();
+//     GYWire.endTransmission();
 
-    // Digital Low Pass Filter
+//     // Digital Low Pass Filter
 
-    GYWire.beginTransmission(
-        0x68
-    );
+//     GYWire.beginTransmission(
+//         0x68
+//     );
 
-    GYWire.write(
-        0x1A
-    );
+//     GYWire.write(
+//         0x1A
+//     );
 
-    GYWire.write(
-        0x03
-    );
+//     GYWire.write(
+//         0x03
+//     );
 
-    GYWire.endTransmission();
+//     GYWire.endTransmission();
 
-    Serial.println(
-        "MPU6050 configured"
-    );
-}
+//     Serial.println(
+//         "MPU6050 configured"
+//     );
+// }
 
 // ============================================================
 // MPU6050 READ
 // ============================================================
 
-void readMPU6050(){
-    GYWire.beginTransmission(
-        0x68
-    );
+// void readMPU6050(){
+//     GYWire.beginTransmission(
+//         0x68
+//     );
 
-    GYWire.write(
-        0x3B
-    );
+//     GYWire.write(
+//         0x3B
+//     );
 
-    if (
-        GYWire.endTransmission(
-            false
-        ) != 0
-    )
-    {
-        return;
-    }
+//     if (
+//         GYWire.endTransmission(
+//             false
+//         ) != 0
+//     )
+//     {
+//         return;
+//     }
 
-    uint8_t received =
-        GYWire.requestFrom(
-            0x68,
-            14
-        );
+//     uint8_t received =
+//         GYWire.requestFrom(
+//             0x68,
+//             14
+//         );
 
-    if (
-        received != 14
-    )
-    {
-        return;
-    }
+//     if (
+//         received != 14
+//     )
+//     {
+//         return;
+//     }
 
-    rawAX =
-        ((int16_t)GYWire.read() << 8) |
-        GYWire.read();
+//     rawAX =
+//         ((int16_t)GYWire.read() << 8) |
+//         GYWire.read();
 
-    rawAY =
-        ((int16_t)GYWire.read() << 8) |
-        GYWire.read();
+//     rawAY =
+//         ((int16_t)GYWire.read() << 8) |
+//         GYWire.read();
 
-    rawAZ =
-        ((int16_t)GYWire.read() << 8) |
-        GYWire.read();
+//     rawAZ =
+//         ((int16_t)GYWire.read() << 8) |
+//         GYWire.read();
 
-    rawMPUTemp =
-        ((int16_t)GYWire.read() << 8) |
-        GYWire.read();
+//     rawMPUTemp =
+//         ((int16_t)GYWire.read() << 8) |
+//         GYWire.read();
 
-    rawGX =
-        ((int16_t)GYWire.read() << 8) |
-        GYWire.read();
+//     rawGX =
+//         ((int16_t)GYWire.read() << 8) |
+//         GYWire.read();
 
-    rawGY =
-        ((int16_t)GYWire.read() << 8) |
-        GYWire.read();
+//     rawGY =
+//         ((int16_t)GYWire.read() << 8) |
+//         GYWire.read();
 
-    rawGZ =
-        ((int16_t)GYWire.read() << 8) |
-        GYWire.read();
+//     rawGZ =
+//         ((int16_t)GYWire.read() << 8) |
+//         GYWire.read();
 
-    // ±8G
+//     // ±8G
 
-    accelX =
-        rawAX / 4096.0f;
+//     accelX =
+//         rawAX / 4096.0f;
 
-    accelY =
-        rawAY / 4096.0f;
+//     accelY =
+//         rawAY / 4096.0f;
 
-    accelZ =
-        rawAZ / 4096.0f;
+//     accelZ =
+//         rawAZ / 4096.0f;
 
-    // ±500 deg/s
+//     // ±500 deg/s
 
-    gyroX =
-        rawGX / 65.5f;
+//     gyroX =
+//         rawGX / 65.5f;
 
-    gyroY =
-        rawGY / 65.5f;
+//     gyroY =
+//         rawGY / 65.5f;
 
-    gyroZ =
-        rawGZ / 65.5f;
+//     gyroZ =
+//         rawGZ / 65.5f;
 
-    // Temperature
+//     // Temperature
 
-    mpuTemperature =
-        (rawMPUTemp / 340.0f) +
-        36.53f;
-}
+//     mpuTemperature =
+//         (rawMPUTemp / 340.0f) +
+//         36.53f;
+// }
 
 // ============================================================
 // BMP180 INITIALIZATION
 // ============================================================
 
-void initBMP180(){
-    GYWire.beginTransmission(
-        0x77
-    );
+// void initBMP180(){
+//     GYWire.beginTransmission(
+//         0x77
+//     );
 
-    GYWire.write(
-        0xAA
-    );
+//     GYWire.write(
+//         0xAA
+//     );
 
-    if (
-        GYWire.endTransmission() != 0
-    )
-    {
-        return;
-    }
+//     if (
+//         GYWire.endTransmission() != 0
+//     )
+//     {
+//         return;
+//     }
 
-    if (
-        GYWire.requestFrom(
-            0x77,
-            22
-        ) != 22
-    )
-    {
-        return;
-    }
+//     if (
+//         GYWire.requestFrom(
+//             0x77,
+//             22
+//         ) != 22
+//     )
+//     {
+//         return;
+//     }
 
-    AC1 =
-        ((int16_t)GYWire.read() << 8) |
-        GYWire.read();
+//     AC1 =
+//         ((int16_t)GYWire.read() << 8) |
+//         GYWire.read();
 
-    AC2 =
-        ((int16_t)GYWire.read() << 8) |
-        GYWire.read();
+//     AC2 =
+//         ((int16_t)GYWire.read() << 8) |
+//         GYWire.read();
 
-    AC3 =
-        ((int16_t)GYWire.read() << 8) |
-        GYWire.read();
+//     AC3 =
+//         ((int16_t)GYWire.read() << 8) |
+//         GYWire.read();
 
-    AC4 =
-        ((uint16_t)GYWire.read() << 8) |
-        GYWire.read();
+//     AC4 =
+//         ((uint16_t)GYWire.read() << 8) |
+//         GYWire.read();
 
-    AC5 =
-        ((uint16_t)GYWire.read() << 8) |
-        GYWire.read();
+//     AC5 =
+//         ((uint16_t)GYWire.read() << 8) |
+//         GYWire.read();
 
-    AC6 =
-        ((uint16_t)GYWire.read() << 8) |
-        GYWire.read();
+//     AC6 =
+//         ((uint16_t)GYWire.read() << 8) |
+//         GYWire.read();
 
-    BMP_B1 =
-        ((int16_t)GYWire.read() << 8) |
-        GYWire.read();
+//     BMP_B1 =
+//         ((int16_t)GYWire.read() << 8) |
+//         GYWire.read();
 
-    B2 =
-        ((int16_t)GYWire.read() << 8) |
-        GYWire.read();
+//     B2 =
+//         ((int16_t)GYWire.read() << 8) |
+//         GYWire.read();
 
-    MB =
-        ((int16_t)GYWire.read() << 8) |
-        GYWire.read();
+//     MB =
+//         ((int16_t)GYWire.read() << 8) |
+//         GYWire.read();
 
-    MC =
-        ((int16_t)GYWire.read() << 8) |
-        GYWire.read();
+//     MC =
+//         ((int16_t)GYWire.read() << 8) |
+//         GYWire.read();
 
-    MD =
-        ((int16_t)GYWire.read() << 8) |
-        GYWire.read();
+//     MD =
+//         ((int16_t)GYWire.read() << 8) |
+//         GYWire.read();
 
-    Serial.println(
-        "BMP180 calibration loaded"
-    );
-}
+//     Serial.println(
+//         "BMP180 calibration loaded"
+//     );
+// }
 
 // ============================================================
 // BMP180 START TEMPERATURE
 // ============================================================
 
-void startBMPTemperature(){
-    GYWire.beginTransmission(
-        0x77
-    );
+// void startBMPTemperature(){
+//     GYWire.beginTransmission(
+//         0x77
+//     );
 
-    GYWire.write(
-        0xF4
-    );
+//     GYWire.write(
+//         0xF4
+//     );
 
-    GYWire.write(
-        0x2E
-    );
+//     GYWire.write(
+//         0x2E
+//     );
 
-    if (
-        GYWire.endTransmission() != 0
-    )
-    {
-        return;
-    }
+//     if (
+//         GYWire.endTransmission() != 0
+//     )
+//     {
+//         return;
+//     }
 
-    bmpConversionStart =
-        millis();
+//     bmpConversionStart =
+//         millis();
 
-    bmpState =
-        BMP_TEMP_WAIT;
-}
+//     bmpState =
+//         BMP_TEMP_WAIT;
+// }
 
 // ============================================================
 // BMP180 PROCESSING
 // ============================================================
 
-void processBMP180(){
-    uint32_t now =
-        millis();
+// void processBMP180(){
+//     uint32_t now =
+//         millis();
 
-    // ========================================================
-    // TEMPERATURE
-    // ========================================================
+//     // ========================================================
+//     // TEMPERATURE
+//     // ========================================================
 
-    if (
-        bmpState ==
-        BMP_TEMP_WAIT
-    )
-    {
-        if (
-            now -
-            bmpConversionStart < 5
-        )
-        {
-            return;
-        }
+//     if (
+//         bmpState ==
+//         BMP_TEMP_WAIT
+//     )
+//     {
+//         if (
+//             now -
+//             bmpConversionStart < 5
+//         )
+//         {
+//             return;
+//         }
 
-        GYWire.beginTransmission(
-            0x77
-        );
+//         GYWire.beginTransmission(
+//             0x77
+//         );
 
-        GYWire.write(
-            0xF6
-        );
+//         GYWire.write(
+//             0xF6
+//         );
 
-        if (
-            GYWire.endTransmission(
-                false
-            ) != 0
-        )
-        {
-            bmpState =
-                BMP_IDLE;
+//         if (
+//             GYWire.endTransmission(
+//                 false
+//             ) != 0
+//         )
+//         {
+//             bmpState =
+//                 BMP_IDLE;
 
-            return;
-        }
+//             return;
+//         }
 
-        if (
-            GYWire.requestFrom(
-                0x77,
-                2
-            ) != 2
-        )
-        {
-            bmpState =
-                BMP_IDLE;
+//         if (
+//             GYWire.requestFrom(
+//                 0x77,
+//                 2
+//             ) != 2
+//         )
+//         {
+//             bmpState =
+//                 BMP_IDLE;
 
-            return;
-        }
+//             return;
+//         }
 
-        bmpUT =
-            ((int32_t)GYWire.read() << 8) |
-            GYWire.read();
+//         bmpUT =
+//             ((int32_t)GYWire.read() << 8) |
+//             GYWire.read();
 
-        int32_t X1 =
-            (
-                (bmpUT -
-                 (int32_t)AC6) *
-                (int32_t)AC5
-            ) >> 15;
+//         int32_t X1 =
+//             (
+//                 (bmpUT -
+//                  (int32_t)AC6) *
+//                 (int32_t)AC5
+//             ) >> 15;
 
-        int32_t X2 =
-            ((int32_t)MC << 11) /
-            (X1 + MD);
+//         int32_t X2 =
+//             ((int32_t)MC << 11) /
+//             (X1 + MD);
 
-        int32_t B5 =
-            X1 + X2;
+//         int32_t B5 =
+//             X1 + X2;
 
-        bmpTemperature =
-            ((B5 + 8) >> 4) /
-            10.0f;
+//         bmpTemperature =
+//             ((B5 + 8) >> 4) /
+//             10.0f;
 
-        // ====================================================
-        // START PRESSURE
-        // ====================================================
+//         // ====================================================
+//         // START PRESSURE
+//         // ====================================================
 
-        GYWire.beginTransmission(
-            0x77
-        );
+//         GYWire.beginTransmission(
+//             0x77
+//         );
 
-        GYWire.write(
-            0xF4
-        );
+//         GYWire.write(
+//             0xF4
+//         );
 
-        GYWire.write(
-            0x34
-        );
+//         GYWire.write(
+//             0x34
+//         );
 
-        if (
-            GYWire.endTransmission() != 0
-        )
-        {
-            bmpState =
-                BMP_IDLE;
+//         if (
+//             GYWire.endTransmission() != 0
+//         )
+//         {
+//             bmpState =
+//                 BMP_IDLE;
 
-            return;
-        }
+//             return;
+//         }
 
-        bmpConversionStart =
-            now;
+//         bmpConversionStart =
+//             now;
 
-        bmpState =
-            BMP_PRESSURE_WAIT;
-    }
+//         bmpState =
+//             BMP_PRESSURE_WAIT;
+//     }
 
-    // ========================================================
-    // PRESSURE
-    // ========================================================
+//     // ========================================================
+//     // PRESSURE
+//     // ========================================================
 
-    else if (
-        bmpState ==
-        BMP_PRESSURE_WAIT
-    )
-    {
-        if (
-            now -
-            bmpConversionStart < 5
-        )
-        {
-            return;
-        }
+//     else if (
+//         bmpState ==
+//         BMP_PRESSURE_WAIT
+//     )
+//     {
+//         if (
+//             now -
+//             bmpConversionStart < 5
+//         )
+//         {
+//             return;
+//         }
 
-        GYWire.beginTransmission(
-            0x77
-        );
+//         GYWire.beginTransmission(
+//             0x77
+//         );
 
-        GYWire.write(
-            0xF6
-        );
+//         GYWire.write(
+//             0xF6
+//         );
 
-        if (
-            GYWire.endTransmission(
-                false
-            ) != 0
-        )
-        {
-            bmpState =
-                BMP_IDLE;
+//         if (
+//             GYWire.endTransmission(
+//                 false
+//             ) != 0
+//         )
+//         {
+//             bmpState =
+//                 BMP_IDLE;
 
-            return;
-        }
+//             return;
+//         }
 
-        if (
-            GYWire.requestFrom(
-                0x77,
-                3
-            ) != 3
-        )
-        {
-            bmpState =
-                BMP_IDLE;
+//         if (
+//             GYWire.requestFrom(
+//                 0x77,
+//                 3
+//             ) != 3
+//         )
+//         {
+//             bmpState =
+//                 BMP_IDLE;
 
-            return;
-        }
+//             return;
+//         }
 
-        int32_t MSB =
-            GYWire.read();
+//         int32_t MSB =
+//             GYWire.read();
 
-        int32_t LSB =
-            GYWire.read();
+//         int32_t LSB =
+//             GYWire.read();
 
-        int32_t XLSB =
-            GYWire.read();
+//         int32_t XLSB =
+//             GYWire.read();
 
-        bmpUP =
-            (
-                (MSB << 16) |
-                (LSB << 8) |
-                XLSB
-            ) >> 8;
+//         bmpUP =
+//             (
+//                 (MSB << 16) |
+//                 (LSB << 8) |
+//                 XLSB
+//             ) >> 8;
 
-        // ====================================================
-        // RECALCULATE B5
-        // ====================================================
+//         // ====================================================
+//         // RECALCULATE B5
+//         // ====================================================
 
-        int32_t UT =
-            bmpUT;
+//         int32_t UT =
+//             bmpUT;
 
-        int32_t X1 =
-            (
-                (UT -
-                 (int32_t)AC6) *
-                (int32_t)AC5
-            ) >> 15;
+//         int32_t X1 =
+//             (
+//                 (UT -
+//                  (int32_t)AC6) *
+//                 (int32_t)AC5
+//             ) >> 15;
 
-        int32_t X2 =
-            ((int32_t)MC << 11) /
-            (X1 + MD);
+//         int32_t X2 =
+//             ((int32_t)MC << 11) /
+//             (X1 + MD);
 
-        int32_t B5 =
-            X1 + X2;
+//         int32_t B5 =
+//             X1 + X2;
 
-        // ====================================================
-        // PRESSURE
-        // ====================================================
+//         // ====================================================
+//         // PRESSURE
+//         // ====================================================
 
-        X1 =
-            ((B5 - 4000) *
-             (int32_t)AC2) >> 11;
+//         X1 =
+//             ((B5 - 4000) *
+//              (int32_t)AC2) >> 11;
 
-        X2 =
-            ((int32_t)BMP_B1 *
-             ((X1 * X1) >> 12)) >> 16;
+//         X2 =
+//             ((int32_t)BMP_B1 *
+//              ((X1 * X1) >> 12)) >> 16;
 
-        int32_t X3 =
-            X1 + X2;
+//         int32_t X3 =
+//             X1 + X2;
 
-        int32_t B3 =
-            ((((int32_t)AC1 * 4 +
-               X3) + 2) >> 2);
+//         int32_t B3 =
+//             ((((int32_t)AC1 * 4 +
+//                X3) + 2) >> 2);
 
-        X1 =
-            ((int32_t)AC3 * B5) >> 13;
+//         X1 =
+//             ((int32_t)AC3 * B5) >> 13;
 
-        X2 =
-            ((int32_t)B2 *
-             ((X1 * X1) >> 12)) >> 16;
+//         X2 =
+//             ((int32_t)B2 *
+//              ((X1 * X1) >> 12)) >> 16;
 
-        X3 =
-            ((X1 + X2) + 2) >> 2;
+//         X3 =
+//             ((X1 + X2) + 2) >> 2;
 
-        uint32_t B4 =
-            ((uint32_t)AC4 *
-             (uint32_t)(X3 + 32768)) >> 15;
+//         uint32_t B4 =
+//             ((uint32_t)AC4 *
+//              (uint32_t)(X3 + 32768)) >> 15;
 
-        uint32_t B7 =
-            ((uint32_t)bmpUP - B3) *
-            50000;
+//         uint32_t B7 =
+//             ((uint32_t)bmpUP - B3) *
+//             50000;
 
-        int32_t pressure;
+//         int32_t pressure;
 
-        if (
-            B7 < 0x80000000
-        )
-        {
-            pressure =
-                (B7 * 2) / B4;
-        }
-        else
-        {
-            pressure =
-                (B7 / B4) * 2;
-        }
+//         if (
+//             B7 < 0x80000000
+//         )
+//         {
+//             pressure =
+//                 (B7 * 2) / B4;
+//         }
+//         else
+//         {
+//             pressure =
+//                 (B7 / B4) * 2;
+//         }
 
-        X1 =
-            (pressure >> 8) *
-            (pressure >> 8);
+//         X1 =
+//             (pressure >> 8) *
+//             (pressure >> 8);
 
-        X1 =
-            (X1 * 3038) >> 16;
+//         X1 =
+//             (X1 * 3038) >> 16;
 
-        X2 =
-            (-7357 * pressure) >> 16;
+//         X2 =
+//             (-7357 * pressure) >> 16;
 
-        pressure =
-            pressure +
-            ((X1 + X2 + 3791) >> 4);
+//         pressure =
+//             pressure +
+//             ((X1 + X2 + 3791) >> 4);
 
-        bmpPressure =
-            pressure;
+//         bmpPressure =
+//             pressure;
 
-        // ====================================================
-        // ALTITUDE
-        // ====================================================
+//         // ====================================================
+//         // ALTITUDE
+//         // ====================================================
 
-        bmpAltitude =
-            44330.0f *
-            (
-                1.0f -
-                powf(
-                    bmpPressure /
-                    101325.0f,
-                    0.1903f
-                )
-            );
+//         bmpAltitude =
+//             44330.0f *
+//             (
+//                 1.0f -
+//                 powf(
+//                     bmpPressure /
+//                     101325.0f,
+//                     0.1903f
+//                 )
+//             );
 
-        bmpState =
-            BMP_IDLE;
-    }
-}
+//         bmpState =
+//             BMP_IDLE;
+//     }
+// }
 
 // ============================================================
 // VIBRATION

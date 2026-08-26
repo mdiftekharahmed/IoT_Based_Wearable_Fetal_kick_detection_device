@@ -71,6 +71,7 @@ void scanBus() {
   uint8_t found = 0;
   uint8_t errors = 0;
 
+
   for (uint8_t addr = 1; addr < 127; addr++) {
     // A device ACKs its address, which makes endTransmission() return 0.
     Wire.beginTransmission(addr);
