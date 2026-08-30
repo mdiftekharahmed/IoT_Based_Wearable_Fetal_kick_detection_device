@@ -15,13 +15,13 @@ BluetoothSerial SerialBT;
 // I2C PINS
 // ============================================================
 
-// GY-521 (MPU-6050) - now active
-#define GY_SDA 21 //white
-#define GY_SCL 22 //black
+// GY-521 (MPU-6050)
+#define GY_SDA 21
+#define GY_SCL 22
 
 // MAX30100
 #define MAX_SDA 25
-#define MAX_SCL 26 
+#define MAX_SCL 26
 
 // ============================================================
 // SD CARD
@@ -50,8 +50,8 @@ const uint64_t MIN_FREE_SPACE = 16ULL * 1024ULL;
 // MPU6050 = 100 Hz
 const uint32_t MPU_INTERVAL_MS = 10;
 
-// BMP180 = approximately 10 Hz
-const uint32_t BMP_INTERVAL_MS = 100;
+// BMP180 disabled
+// const uint32_t BMP_INTERVAL_MS = 100;
 
 // Heart-rate values updated once per second
 const uint32_t HEART_REPORT_INTERVAL_MS = 1000;
@@ -72,7 +72,7 @@ float heartRate = 0.0;
 float spo2 = 0.0;
 
 // ============================================================
-// GY-521 I2C (was GY-87)
+// GY-521 I2C
 // ============================================================
 
 TwoWire GYWire = TwoWire(1);
@@ -107,8 +107,10 @@ float mpuTemperature = 0;
 
 // ============================================================
 // BMP180 CALIBRATION
+// KEEPING THESE FOR FUTURE RE-ENABLE
 // ============================================================
 
+/*
 int16_t AC1;
 int16_t AC2;
 int16_t AC3;
@@ -122,19 +124,25 @@ int16_t B2;
 int16_t MB;
 int16_t MC;
 int16_t MD;
+*/
 
 // ============================================================
 // BMP180 DATA
+// KEEPING THESE FOR FUTURE RE-ENABLE
 // ============================================================
 
+/*
 float bmpTemperature = 0;
 float bmpPressure = 0;
 float bmpAltitude = 0;
+*/
 
 // ============================================================
 // BMP180 STATE
+// KEEPING THESE FOR FUTURE RE-ENABLE
 // ============================================================
 
+/*
 enum BMPState
 {
     BMP_IDLE,
@@ -148,6 +156,7 @@ uint32_t bmpConversionStart = 0;
 
 int32_t bmpUT = 0;
 int32_t bmpUP = 0;
+*/
 
 // ============================================================
 // VIBRATION
@@ -210,9 +219,16 @@ struct SensorData
 
     float mpuTemperature;
 
+    // ========================================================
+    // BMP180
+    // Currently disabled
+    // ========================================================
+
+    /*
     float bmpTemperature;
     float bmpPressure;
     float bmpAltitude;
+    */
 
     float heartRate;
     float spo2;
@@ -259,23 +275,39 @@ QueueHandle_t sdCommandQueue;
 // ============================================================
 
 // ------------------------------------------------------------
-// GY-521 (MPU6050) ENABLED - previously GY-87 disabled
+// MPU6050
 // ------------------------------------------------------------
 
 void initMPU6050();
 void readMPU6050();
 
-// void initBMP180();
-// void startBMPTemperature();
-// void processBMP180();
+// ------------------------------------------------------------
+// BMP180
+// Currently disabled
+// ------------------------------------------------------------
+
+/*
+void initBMP180();
+void startBMPTemperature();
+void processBMP180();
+*/
+
+// ------------------------------------------------------------
+// VIBRATION
+// ------------------------------------------------------------
 
 void measureVibration();
+
+// ------------------------------------------------------------
+// GENERAL
+// ------------------------------------------------------------
 
 void printSensorData();
 
 void onBeatDetected();
 
 void sensorTask(void *parameter);
+
 void sdTask(void *parameter);
 
 void processBluetoothCommands();
@@ -326,219 +358,233 @@ void setup()
 {
     Serial.begin(921600);
 
-        delay(100);
+    delay(100);
 
-        Serial.println();
-        Serial.println("========================================");
-        Serial.println("ESP32 SENSOR DATA LOGGER");
-        Serial.println("DUAL CORE + BLUETOOTH + SD");
-        Serial.println("========================================");
+    Serial.println();
+    Serial.println("========================================");
+    Serial.println("ESP32 SENSOR DATA LOGGER");
+    Serial.println("DUAL CORE + BLUETOOTH + SD");
+    Serial.println("========================================");
 
     // ========================================================
     // BLUETOOTH
     // ========================================================
 
-        Serial.println();
-        Serial.println("Initializing Bluetooth...");
+    Serial.println();
+    Serial.println("Initializing Bluetooth...");
 
-        if (!SerialBT.begin("ESP32_SENSOR_LOGGER"))
-        {
-            Serial.println("Bluetooth FAILED");
-        }
-        else
-        {
-            Serial.println("Bluetooth OK");
-            Serial.println("Device: ESP32_SENSOR_LOGGER");
-        }
+    if (!SerialBT.begin("ESP32_SENSOR_LOGGER"))
+    {
+        Serial.println("Bluetooth FAILED");
+    }
+    else
+    {
+        Serial.println("Bluetooth OK");
+        Serial.println("Device: ESP32_SENSOR_LOGGER");
+    }
 
     // ========================================================
     // MAX30100
     // ========================================================
 
-        Serial.println();
-        Serial.println("Initializing MAX30100...");
+    Serial.println();
+    Serial.println("Initializing MAX30100...");
 
-        Wire.begin(MAX_SDA, MAX_SCL);
+    Wire.begin(
+        MAX_SDA,
+        MAX_SCL
+    );
 
-        Wire.setClock(400000);
+    Wire.setClock(400000);
 
-        if (!pox.begin())
-        {
-            Serial.println("MAX30100 FAILED");
-        }
-        else
-        {
-            Serial.println("MAX30100 OK");
+    if (!pox.begin())
+    {
+        Serial.println("MAX30100 FAILED");
+    }
+    else
+    {
+        Serial.println("MAX30100 OK");
 
-            pox.setIRLedCurrent(
-                MAX30100_LED_CURR_7_6MA
-            );
-
-            pox.setOnBeatDetectedCallback(
-                onBeatDetected
-            );
-        }
-
-    // ========================================================
-    // GY-521 (MPU6050) - NOW ACTIVE
-    // ========================================================
-
-        Serial.println();
-        Serial.println("Initializing GY-521 (MPU-6050)...");
-
-        GYWire.begin(
-            GY_SDA,
-            GY_SCL,
-            400000
+        pox.setIRLedCurrent(
+            MAX30100_LED_CURR_7_6MA
         );
 
-        GYWire.setClock(400000);
-
-        Serial.println(
-            "GY-521 I2C initialized on bus 1 (SDA 21 / SCL 22)"
+        pox.setOnBeatDetectedCallback(
+            onBeatDetected
         );
+    }
 
     // ========================================================
-    // MPU6050 (now enabled)
+    // GY-521 / MPU6050
     // ========================================================
 
-        initMPU6050();
+    Serial.println();
+    Serial.println("Initializing GY-521 (MPU-6050)...");
+
+    GYWire.begin(
+        GY_SDA,
+        GY_SCL,
+        400000
+    );
+
+    GYWire.setClock(400000);
+
+    Serial.println(
+        "GY-521 I2C initialized on bus 1 (SDA 21 / SCL 22)"
+    );
+
+    // ========================================================
+    // MPU6050
+    // ========================================================
+
+    initMPU6050();
 
     // ========================================================
     // BMP180
+    // DISABLED
     // ========================================================
 
-        Serial.println();
-        Serial.println("BMP180 DISABLED (GY-521 module does not contain BMP180)");
+    Serial.println();
+    Serial.println(
+        "BMP180 DISABLED - SENSOR NOT INSTALLED"
+    );
 
-        // GYWire.beginTransmission(0x77);
-        // if (GYWire.endTransmission() == 0)
-        // {
-        //     Serial.println("BMP180 detected");
-        //     initBMP180();
-        // }
-        // else
-        // {
-        //     Serial.println("BMP180 NOT FOUND");
-        // }
+    /*
+    // BMP180 initialization can be restored here later.
+
+    GYWire.beginTransmission(0x77);
+
+    if (GYWire.endTransmission() == 0)
+    {
+        Serial.println("BMP180 detected");
+        initBMP180();
+    }
+    else
+    {
+        Serial.println("BMP180 NOT FOUND");
+    }
+    */
 
     // ========================================================
     // VIBRATION
     // ========================================================
 
-        pinMode(
-            VIBRATION_PIN,
-            INPUT
+    pinMode(
+        VIBRATION_PIN,
+        INPUT
+    );
+
+    prevVibrationState =
+        digitalRead(
+            VIBRATION_PIN
         );
 
-        prevVibrationState =
-            digitalRead(
-                VIBRATION_PIN
-            );
-
-        Serial.println();
-        Serial.println(
-            "Vibration sensor ready"
-        );
+    Serial.println();
+    Serial.println(
+        "Vibration sensor ready"
+    );
 
     // ========================================================
     // SD SPI
     // ========================================================
 
-        SD_SPI.begin(
-            SD_SCK,
-            SD_MISO,
-            SD_MOSI,
-            SD_CS
-        );
+    SD_SPI.begin(
+        SD_SCK,
+        SD_MISO,
+        SD_MOSI,
+        SD_CS
+    );
 
     // ========================================================
     // QUEUES
     // ========================================================
 
-        sensorQueue =
-            xQueueCreate(
-                300,
-                sizeof(SensorData)
-            );
+    sensorQueue =
+        xQueueCreate(
+            300,
+            sizeof(SensorData)
+        );
 
-        sdCommandQueue =
-            xQueueCreate(
-                10,
-                sizeof(SDCommand)
-            );
+    sdCommandQueue =
+        xQueueCreate(
+            10,
+            sizeof(SDCommand)
+        );
 
-        if (sensorQueue == NULL)
-        {
-            Serial.println(
-                "ERROR: Sensor queue failed"
-            );
-        }
+    if (sensorQueue == NULL)
+    {
+        Serial.println(
+            "ERROR: Sensor queue failed"
+        );
+    }
 
-        if (sdCommandQueue == NULL)
-        {
-            Serial.println(
-                "ERROR: SD command queue failed"
-            );
-        }
+    if (sdCommandQueue == NULL)
+    {
+        Serial.println(
+            "ERROR: SD command queue failed"
+        );
+    }
 
     // ========================================================
     // SENSOR TASK
     // CORE 1
     // ========================================================
 
-        xTaskCreatePinnedToCore(
-            sensorTask,
-            "SensorTask",
-            8192,
-            NULL,
-            3,
-            NULL,
-            1
-        );
+    xTaskCreatePinnedToCore(
+        sensorTask,
+        "SensorTask",
+        8192,
+        NULL,
+        3,
+        NULL,
+        1
+    );
 
     // ========================================================
     // SD TASK
     // CORE 0
     // ========================================================
 
-        xTaskCreatePinnedToCore(
-            sdTask,
-            "SDTask",
-            8192,
-            NULL,
-            2,
-            NULL,
-            0
-        );
+    xTaskCreatePinnedToCore(
+        sdTask,
+        "SDTask",
+        8192,
+        NULL,
+        2,
+        NULL,
+        0
+    );
 
     // ========================================================
     // READY
     // ========================================================
 
-        Serial.println();
-        Serial.println("========================================");
-        Serial.println("SYSTEM READY");
-        Serial.println("========================================");
+    Serial.println();
+    Serial.println("========================================");
+    Serial.println("SYSTEM READY");
+    Serial.println("========================================");
 
-        Serial.println();
-        Serial.println("Bluetooth commands:");
-        Serial.println();
-        Serial.println("SD_INIT");
-        Serial.println("START");
-        Serial.println("STOP");
-        Serial.println("LIST");
-        Serial.println("READ <index>");
-        Serial.println("SD_RELEASE");
-        Serial.println("STATUS");
+    Serial.println();
+    Serial.println("Bluetooth commands:");
+    Serial.println();
+
+    Serial.println("SD_INIT");
+    Serial.println("START");
+    Serial.println("STOP");
+    Serial.println("LIST");
+    Serial.println("READ <index>");
+    Serial.println("SD_RELEASE");
+    Serial.println("STATUS");
 }
 
 // ============================================================
 // MAIN LOOP
 // ============================================================
 
-void loop(){
+void loop()
+{
     processBluetoothCommands();
+
     delay(2);
 }
 
@@ -546,14 +592,18 @@ void loop(){
 // BLUETOOTH COMMAND PROCESSOR
 // ============================================================
 
-void processBluetoothCommands(){
+void processBluetoothCommands()
+{
     static String command = "";
 
     while (SerialBT.available())
     {
         char c = SerialBT.read();
 
-        if (c == '\n' || c == '\r')
+        if (
+            c == '\n' ||
+            c == '\r'
+        )
         {
             if (command.length() > 0)
             {
@@ -571,185 +621,185 @@ void processBluetoothCommands(){
                 // SD_INIT
                 // =================================================
 
-                    if (
-                        command.equalsIgnoreCase(
-                            "SD_INIT"
-                        )
+                if (
+                    command.equalsIgnoreCase(
+                        "SD_INIT"
                     )
-                    {
-                        SDCommand cmd;
+                )
+                {
+                    SDCommand cmd;
 
-                        cmd.type =
-                            SD_CMD_INIT;
+                    cmd.type =
+                        SD_CMD_INIT;
 
-                        cmd.index = -1;
+                    cmd.index = -1;
 
-                        xQueueSend(
-                            sdCommandQueue,
-                            &cmd,
-                            0
-                        );
-                    }
+                    xQueueSend(
+                        sdCommandQueue,
+                        &cmd,
+                        0
+                    );
+                }
 
                 // =================================================
                 // START
                 // =================================================
 
-                    else if (
-                        command.equalsIgnoreCase(
-                            "START"
-                        )
+                else if (
+                    command.equalsIgnoreCase(
+                        "START"
                     )
-                    {
-                        SDCommand cmd;
+                )
+                {
+                    SDCommand cmd;
 
-                        cmd.type =
-                            SD_CMD_START;
+                    cmd.type =
+                        SD_CMD_START;
 
-                        cmd.index = -1;
+                    cmd.index = -1;
 
-                        xQueueSend(
-                            sdCommandQueue,
-                            &cmd,
-                            0
-                        );
-                    }
+                    xQueueSend(
+                        sdCommandQueue,
+                        &cmd,
+                        0
+                    );
+                }
 
                 // =================================================
                 // STOP
                 // =================================================
 
-                    else if (
-                        command.equalsIgnoreCase(
-                            "STOP"
-                        )
+                else if (
+                    command.equalsIgnoreCase(
+                        "STOP"
                     )
+                )
+                {
+                    if (!scanning)
                     {
-                        if (!scanning)
-                        {
-                            sendBluetooth(
-                                "NO SCAN IN PROGRESS"
-                            );
-                        }
-                        else
-                        {
-                            stopRequested = true;
-
-                            sendBluetooth(
-                                "STOP REQUESTED"
-                            );
-                        }
+                        sendBluetooth(
+                            "NO SCAN IN PROGRESS"
+                        );
                     }
+                    else
+                    {
+                        stopRequested = true;
+
+                        sendBluetooth(
+                            "STOP REQUESTED"
+                        );
+                    }
+                }
 
                 // =================================================
                 // LIST
                 // =================================================
 
-                    else if (
-                        command.equalsIgnoreCase(
-                            "LIST"
-                        )
+                else if (
+                    command.equalsIgnoreCase(
+                        "LIST"
                     )
-                    {
-                        SDCommand cmd;
+                )
+                {
+                    SDCommand cmd;
 
-                        cmd.type =
-                            SD_CMD_LIST;
+                    cmd.type =
+                        SD_CMD_LIST;
 
-                        cmd.index = -1;
+                    cmd.index = -1;
 
-                        xQueueSend(
-                            sdCommandQueue,
-                            &cmd,
-                            0
-                        );
-                    }
+                    xQueueSend(
+                        sdCommandQueue,
+                        &cmd,
+                        0
+                    );
+                }
 
                 // =================================================
                 // READ
                 // =================================================
 
-                    else if (
-                        command.startsWith("READ ") ||
-                        command.startsWith("read ")
-                    )
-                    {
-                        String number =
-                            command.substring(5);
+                else if (
+                    command.startsWith("READ ") ||
+                    command.startsWith("read ")
+                )
+                {
+                    String number =
+                        command.substring(5);
 
-                        int index =
-                            number.toInt();
+                    int index =
+                        number.toInt();
 
-                        SDCommand cmd;
+                    SDCommand cmd;
 
-                        cmd.type =
-                            SD_CMD_READ;
+                    cmd.type =
+                        SD_CMD_READ;
 
-                        cmd.index =
-                            index;
+                    cmd.index =
+                        index;
 
-                        xQueueSend(
-                            sdCommandQueue,
-                            &cmd,
-                            0
-                        );
-                    }
+                    xQueueSend(
+                        sdCommandQueue,
+                        &cmd,
+                        0
+                    );
+                }
 
                 // =================================================
                 // SD_RELEASE
                 // =================================================
 
-                    else if (
-                        command.equalsIgnoreCase(
-                            "SD_RELEASE"
-                        )
+                else if (
+                    command.equalsIgnoreCase(
+                        "SD_RELEASE"
                     )
+                )
+                {
+                    if (scanning)
                     {
-                        if (scanning)
-                        {
-                            sendBluetooth(
-                                "SCAN IN PROGRESS"
-                            );
+                        sendBluetooth(
+                            "SCAN IN PROGRESS"
+                        );
 
-                            sendBluetooth(
-                                "STOP SCAN FIRST"
-                            );
-                        }
-                        else
-                        {
-                            sdReleaseRequested = true;
-
-                            sendBluetooth(
-                                "SD RELEASE REQUESTED"
-                            );
-                        }
+                        sendBluetooth(
+                            "STOP SCAN FIRST"
+                        );
                     }
+                    else
+                    {
+                        sdReleaseRequested = true;
+
+                        sendBluetooth(
+                            "SD RELEASE REQUESTED"
+                        );
+                    }
+                }
 
                 // =================================================
                 // STATUS
                 // =================================================
 
-                    else if (
-                        command.equalsIgnoreCase(
-                            "STATUS"
-                        )
+                else if (
+                    command.equalsIgnoreCase(
+                        "STATUS"
                     )
-                    {
-                        printSystemStatus();
-                    }
+                )
+                {
+                    printSystemStatus();
+                }
 
                 // =================================================
                 // UNKNOWN
                 // =================================================
 
-                    else
-                    {
-                        sendBluetooth(
-                            "UNKNOWN COMMAND"
-                        );
-                    }
+                else
+                {
+                    sendBluetooth(
+                        "UNKNOWN COMMAND"
+                    );
+                }
 
-                    command = "";
+                command = "";
             }
         }
         else
@@ -766,7 +816,10 @@ void processBluetoothCommands(){
 // BLUETOOTH SEND
 // ============================================================
 
-void sendBluetooth(const String &message){
+void sendBluetooth(
+    const String &message
+)
+{
     SerialBT.println(message);
 
     Serial.println(
@@ -779,11 +832,9 @@ void sendBluetooth(const String &message){
 // CORE 1
 // ============================================================
 
-void sensorTask(void *parameter){
+void sensorTask(void *parameter)
+{
     uint32_t lastMPU =
-        millis();
-
-    uint32_t lastBMP =
         millis();
 
     uint32_t lastHeart =
@@ -860,6 +911,11 @@ void sensorTask(void *parameter){
                 data.mpuTemperature =
                     mpuTemperature;
 
+                // =================================================
+                // BMP180 DISABLED
+                // =================================================
+
+                /*
                 data.bmpTemperature =
                     bmpTemperature;
 
@@ -868,12 +924,19 @@ void sensorTask(void *parameter){
 
                 data.bmpAltitude =
                     bmpAltitude;
+                */
 
                 data.heartRate =
                     heartRate;
 
                 data.spo2 =
                     spo2;
+
+                // =================================================
+                // VIBRATION
+                //
+                // Copy current values into THIS sample.
+                // =================================================
 
                 data.vibrationOnes =
                     vibrationOnes;
@@ -906,34 +969,32 @@ void sensorTask(void *parameter){
                     );
                 }
 
-                // Event belongs to this sample.
-                vibrationEvent =
-                    false;
+                // =================================================
+                // RESET VIBRATION VALUES
+                //
+                // IMPORTANT:
+                //
+                // The values were already copied into
+                // SensorData above.
+                //
+                // Resetting here prevents the previous
+                // vibration from remaining permanently.
+                // =================================================
+
+                vibrationOnes = 0;
+                vibrationZeros = 0;
+                vibrationEvent = false;
             }
         }
 
         // ========================================================
-        // BMP180  (DISABLED - GY-521 module does not contain BMP180)
+        // BMP180
+        // DISABLED
         // ========================================================
 
-        // processBMP180();
-
-        if (
-            now - lastBMP >=
-            BMP_INTERVAL_MS
-        )
-        {
-            lastBMP +=
-                BMP_INTERVAL_MS;
-
-            if (
-                bmpState ==
-                BMP_IDLE
-            )
-            {
-                // startBMPTemperature();
-            }
-        }
+        /*
+        processBMP180();
+        */
 
         // ========================================================
         // HEART RATE
@@ -1000,7 +1061,8 @@ void sensorTask(void *parameter){
 // CORE 0
 // ============================================================
 
-void sdTask(void *parameter){
+void sdTask(void *parameter)
+{
     // =========================================================
     // IMPORTANT:
     //
@@ -1280,8 +1342,6 @@ void sdTask(void *parameter){
         // ========================================================
         // STOPPED SCAN
         //
-        // We DO NOT close the file immediately.
-        //
         // First drain every sample remaining in the queue.
         // ========================================================
 
@@ -1344,7 +1404,8 @@ void sdTask(void *parameter){
                     );
 
                     sendBluetooth(
-                        "FINISHING QUEUED DATA...");
+                        "FINISHING QUEUED DATA..."
+                    );
                 }
 
                 stopMessageSent =
@@ -1403,7 +1464,8 @@ void sdTask(void *parameter){
                     );
 
                     sendBluetooth(
-                        "PLEASE WAIT...");
+                        "PLEASE WAIT..."
+                    );
                 }
 
                 lastWaitMessage =
@@ -1435,7 +1497,8 @@ void sdTask(void *parameter){
 // SD INITIALIZATION
 // ============================================================
 
-void initializeSDCard(){
+void initializeSDCard()
+{
     sendBluetooth(
         "INITIALIZING SD CARD..."
     );
@@ -1526,7 +1589,8 @@ void initializeSDCard(){
 // START SCAN
 // ============================================================
 
-void startScan(File &currentFile){
+void startScan(File &currentFile)
+{
     uint64_t total =
         SD.totalBytes();
 
@@ -1637,7 +1701,8 @@ void startScan(File &currentFile){
 // CSV HEADER
 // ============================================================
 
-void writeCSVHeader(File &file){
+void writeCSVHeader(File &file)
+{
     file.println(
         "scan_time_ms,"
         "accel_x,"
@@ -1647,9 +1712,10 @@ void writeCSVHeader(File &file){
         "gyro_y,"
         "gyro_z,"
         "mpu_temperature,"
-        "bmp_temperature,"
-        "pressure_pa,"
-        "altitude_m,"
+        // BMP180 disabled
+        // "bmp_temperature,"
+        // "pressure_pa,"
+        // "altitude_m,"
         "heart_rate,"
         "spo2,"
         "vibration_event,"
@@ -1662,7 +1728,11 @@ void writeCSVHeader(File &file){
 // WRITE SENSOR DATA
 // ============================================================
 
-bool writeSensorData(File &file, const SensorData &data){
+bool writeSensorData(
+    File &file,
+    const SensorData &data
+)
+{
     if (!file)
     {
         return false;
@@ -1727,6 +1797,12 @@ bool writeSensorData(File &file, const SensorData &data){
 
     file.print(",");
 
+    // ========================================================
+    // BMP180
+    // DISABLED
+    // ========================================================
+
+    /*
     file.print(
         data.bmpTemperature,
         2
@@ -1747,6 +1823,11 @@ bool writeSensorData(File &file, const SensorData &data){
     );
 
     file.print(",");
+    */
+
+    // ========================================================
+    // MAX30100
+    // ========================================================
 
     file.print(
         data.heartRate,
@@ -1761,6 +1842,10 @@ bool writeSensorData(File &file, const SensorData &data){
     );
 
     file.print(",");
+
+    // ========================================================
+    // VIBRATION
+    // ========================================================
 
     file.print(
         data.vibrationEvent
@@ -1836,7 +1921,8 @@ bool writeSensorData(File &file, const SensorData &data){
 // RELEASE SD CARD
 // ============================================================
 
-void releaseSDCard(){
+void releaseSDCard()
+{
     if (scanning)
     {
         sendBluetooth(
@@ -1887,7 +1973,10 @@ void releaseSDCard(){
 // FILENAME
 // ============================================================
 
-String getScanFilename(uint32_t number){
+String getScanFilename(
+    uint32_t number
+)
+{
     char filename[32];
 
     snprintf(
@@ -1906,7 +1995,8 @@ String getScanFilename(uint32_t number){
 // FIND NEXT SCAN NUMBER
 // ============================================================
 
-uint32_t findNextScanNumber(){
+uint32_t findNextScanNumber()
+{
     uint32_t number = 1;
 
     while (true)
@@ -1936,7 +2026,8 @@ uint32_t findNextScanNumber(){
 // LIST FILES
 // ============================================================
 
-void listScanFiles(){
+void listScanFiles()
+{
     File root =
         SD.open("/");
 
@@ -2037,7 +2128,10 @@ void listScanFiles(){
 // READ FILE
 // ============================================================
 
-void readScanFile(int requestedIndex){
+void readScanFile(
+    int requestedIndex
+)
+{
     File root =
         SD.open("/");
 
@@ -2195,8 +2289,10 @@ void readScanFile(int requestedIndex){
 // STATUS
 // ============================================================
 
-void printSystemStatus(){
+void printSystemStatus()
+{
     SerialBT.println();
+
     SerialBT.println(
         "========== STATUS =========="
     );
@@ -2284,10 +2380,11 @@ void printSystemStatus(){
 }
 
 // ============================================================
-// GY-521 (MPU-6050) CONFIGURATION
+// GY-521 / MPU6050 CONFIGURATION
 // ============================================================
 
-void initMPU6050(){
+void initMPU6050()
+{
     Serial.print(
         "Initializing MPU-6050... "
     );
@@ -2311,7 +2408,9 @@ void initMPU6050(){
         "OK"
     );
 
+    // ========================================================
     // Wake MPU6050
+    // ========================================================
 
     GYWire.beginTransmission(
         0x68
@@ -2327,7 +2426,10 @@ void initMPU6050(){
 
     GYWire.endTransmission();
 
-    // Accelerometer +/-8G  (matches your bring-up sketch)
+    // ========================================================
+    // Accelerometer +/-8G
+    // ========================================================
+
     GYWire.beginTransmission(
         0x68
     );
@@ -2342,7 +2444,10 @@ void initMPU6050(){
 
     GYWire.endTransmission();
 
-    // Gyroscope +/-500 deg/s  (matches your bring-up sketch)
+    // ========================================================
+    // Gyroscope +/-500 deg/s
+    // ========================================================
+
     GYWire.beginTransmission(
         0x68
     );
@@ -2357,7 +2462,10 @@ void initMPU6050(){
 
     GYWire.endTransmission();
 
-    // Digital Low Pass Filter 44 Hz  (matches your bring-up sketch)
+    // ========================================================
+    // Digital Low Pass Filter 44 Hz
+    // ========================================================
+
     GYWire.beginTransmission(
         0x68
     );
@@ -2377,7 +2485,12 @@ void initMPU6050(){
     );
 }
 
-void readMPU6050(){
+// ============================================================
+// READ MPU6050
+// ============================================================
+
+void readMPU6050()
+{
     GYWire.beginTransmission(
         0x68
     );
@@ -2436,7 +2549,10 @@ void readMPU6050(){
         ((int16_t)GYWire.read() << 8) |
         GYWire.read();
 
+    // ========================================================
     // +/-8G
+    // ========================================================
+
     accelX =
         rawAX / 4096.0f;
 
@@ -2446,7 +2562,10 @@ void readMPU6050(){
     accelZ =
         rawAZ / 4096.0f;
 
+    // ========================================================
     // +/-500 deg/s
+    // ========================================================
+
     gyroX =
         rawGX / 65.5f;
 
@@ -2456,271 +2575,537 @@ void readMPU6050(){
     gyroZ =
         rawGZ / 65.5f;
 
+    // ========================================================
     // Temperature
+    // ========================================================
+
     mpuTemperature =
         (rawMPUTemp / 340.0f) +
         36.53f;
 }
 
 // ============================================================
+// BMP180
+// DISABLED
+// ============================================================
+
+/*
+
+// ============================================================
 // BMP180 INITIALIZATION
 // ============================================================
 
-// void initBMP180(){
-//     GYWire.beginTransmission(
-//         0x77
-//     );
+void initBMP180()
+{
+    GYWire.beginTransmission(
+        0x77
+    );
 
-//     GYWire.write(
-//         0xAA
-//     );
+    GYWire.write(
+        0xAA
+    );
 
-//     if (
-//         GYWire.endTransmission() != 0
-//     )
-//     {
-//         return;
-//     }
+    if (
+        GYWire.endTransmission() != 0
+    )
+    {
+        return;
+    }
 
-//     if (GYWire.requestFrom(0x77, 22) != 22)
-//     {
-//         return;
-//     }
+    if (
+        GYWire.requestFrom(
+            0x77,
+            22
+        ) != 22
+    )
+    {
+        return;
+    }
 
-//     AC1 =
-//         ((int16_t)GYWire.read() << 8) |
-//         GYWire.read();
+    AC1 =
+        ((int16_t)GYWire.read() << 8) |
+        GYWire.read();
 
-//     AC2 =
-//         ((int16_t)GYWire.read() << 8) |
-//         GYWire.read();
+    AC2 =
+        ((int16_t)GYWire.read() << 8) |
+        GYWire.read();
 
-//     AC3 =
-//         ((int16_t)GYWire.read() << 8) |
-//         GYWire.read();
+    AC3 =
+        ((int16_t)GYWire.read() << 8) |
+        GYWire.read();
 
-//     AC4 =
-//         ((uint16_t)GYWire.read() << 8) |
-//         GYWire.read();
+    AC4 =
+        ((uint16_t)GYWire.read() << 8) |
+        GYWire.read();
 
-//     AC5 =
-//         ((uint16_t)GYWire.read() << 8) |
-//         GYWire.read();
+    AC5 =
+        ((uint16_t)GYWire.read() << 8) |
+        GYWire.read();
 
-//     AC6 =
-//         ((uint16_t)GYWire.read() << 8) |
-//         GYWire.read();
+    AC6 =
+        ((uint16_t)GYWire.read() << 8) |
+        GYWire.read();
 
-//     BMP_B1 =
-//         ((int16_t)GYWire.read() << 8) |
-//         GYWire.read();
+    BMP_B1 =
+        ((int16_t)GYWire.read() << 8) |
+        GYWire.read();
 
-//     B2 =
-//         ((int16_t)GYWire.read() << 8) |
-//         GYWire.read();
+    B2 =
+        ((int16_t)GYWire.read() << 8) |
+        GYWire.read();
 
-//     MB =
-//         ((int16_t)GYWire.read() << 8) |
-//         GYWire.read();
+    MB =
+        ((int16_t)GYWire.read() << 8) |
+        GYWire.read();
 
-//     MC =
-//         ((int16_t)GYWire.read() << 8) |
-//         GYWire.read();
+    MC =
+        ((int16_t)GYWire.read() << 8) |
+        GYWire.read();
 
-//     MD =
-//         ((int16_t)GYWire.read() << 8) |
-//         GYWire.read();
+    MD =
+        ((int16_t)GYWire.read() << 8) |
+        GYWire.read();
 
-//     Serial.println(
-//         "BMP180 calibration loaded"
-//     );
-// }
+    Serial.println(
+        "BMP180 calibration loaded"
+    );
+}
 
 // ============================================================
 // BMP180 START TEMPERATURE
 // ============================================================
 
-// void startBMPTemperature(){
-//     GYWire.beginTransmission(
-//         0x77
-//     );
+void startBMPTemperature()
+{
+    GYWire.beginTransmission(
+        0x77
+    );
 
-//     GYWire.write(
-//         0xF4
-//     );
+    GYWire.write(
+        0xF4
+    );
 
-//     GYWire.write(
-//         0x2E
-//     );
+    GYWire.write(
+        0x2E
+    );
 
-//     if (
-//         GYWire.endTransmission() != 0
-//     )
-//     {
-//         return;
-//     }
+    if (
+        GYWire.endTransmission() != 0
+    )
+    {
+        return;
+    }
 
-//     bmpConversionStart =
-//         millis();
+    bmpConversionStart =
+        millis();
 
-//     bmpState =
-//         BMP_TEMP_WAIT;
-// }
+    bmpState =
+        BMP_TEMP_WAIT;
+}
 
 // ============================================================
 // BMP180 PROCESSING
 // ============================================================
 
-// void processBMP180(){
-//     uint32_t now = millis();
+void processBMP180()
+{
+    uint32_t now =
+        millis();
 
-//     // Temperature
-//     if (bmpState == BMP_TEMP_WAIT)
-//     {
-//         if (now - bmpConversionStart < 5) return;
+    // ========================================================
+    // Temperature
+    // ========================================================
 
-//         GYWire.beginTransmission(0x77);
-//         GYWire.write(0xF6);
-//         if (GYWire.endTransmission(false) != 0)
-//         {
-//             bmpState = BMP_IDLE; return;
-//         }
-//         if (GYWire.requestFrom(0x77, 2) != 2)
-//         {
-//             bmpState = BMP_IDLE; return;
-//         }
+    if (
+        bmpState ==
+        BMP_TEMP_WAIT
+    )
+    {
+        if (
+            now -
+            bmpConversionStart <
+            5
+        )
+        {
+            return;
+        }
 
-//         bmpUT = ((int32_t)GYWire.read() << 8) | GYWire.read();
+        GYWire.beginTransmission(
+            0x77
+        );
 
-//         int32_t X1 = ((bmpUT - (int32_t)AC6) * (int32_t)AC5) >> 15;
-//         int32_t X2 = ((int32_t)MC << 11) / (X1 + MD);
-//         int32_t B5 = X1 + X2;
+        GYWire.write(
+            0xF6
+        );
 
-//         bmpTemperature = ((B5 + 8) >> 4) / 10.0f;
+        if (
+            GYWire.endTransmission(
+                false
+            ) != 0
+        )
+        {
+            bmpState =
+                BMP_IDLE;
 
-//         // Start pressure
-//         GYWire.beginTransmission(0x77);
-//         GYWire.write(0xF4);
-//         GYWire.write(0x34);
-//         if (GYWire.endTransmission() != 0)
-//         {
-//             bmpState = BMP_IDLE; return;
-//         }
+            return;
+        }
 
-//         bmpConversionStart = now;
-//         bmpState = BMP_PRESSURE_WAIT;
-//     }
+        if (
+            GYWire.requestFrom(
+                0x77,
+                2
+            ) != 2
+        )
+        {
+            bmpState =
+                BMP_IDLE;
 
-//     // Pressure
-//     else if (bmpState == BMP_PRESSURE_WAIT)
-//     {
-//         if (now - bmpConversionStart < 5) return;
+            return;
+        }
 
-//         GYWire.beginTransmission(0x77);
-//         GYWire.write(0xF6);
-//         if (GYWire.endTransmission(false) != 0)
-//         {
-//             bmpState = BMP_IDLE; return;
-//         }
-//         if (GYWire.requestFrom(0x77, 3) != 3)
-//         {
-//             bmpState = BMP_IDLE; return;
-//         }
+        bmpUT =
+            ((int32_t)GYWire.read() << 8) |
+            GYWire.read();
 
-//         int32_t MSB = GYWire.read();
-//         int32_t LSB = GYWire.read();
-//         int32_t XLSB = GYWire.read();
+        int32_t X1 =
+            ((bmpUT -
+              (int32_t)AC6) *
+             (int32_t)AC5) >>
+            15;
 
-//         bmpUP = ((MSB << 16) | (LSB << 8) | XLSB) >> 8;
+        int32_t X2 =
+            ((int32_t)MC << 11) /
+            (X1 + MD);
 
-//         // Recalculate B5
-//         int32_t UT = bmpUT;
-//         int32_t X1 = ((UT - (int32_t)AC6) * (int32_t)AC5) >> 15;
-//         int32_t X2 = ((int32_t)MC << 11) / (X1 + MD);
-//         int32_t B5 = X1 + X2;
+        int32_t B5 =
+            X1 + X2;
 
-//         // Pressure calculation (same as your bring-up)
-//         X1 = ((B5 - 4000) * (int32_t)AC2) >> 11;
-//         X2 = ((int32_t)BMP_B1 * ((X1 * X1) >> 12)) >> 16;
-//         int32_t X3 = X1 + X2;
-//         int32_t B3 = ((((int32_t)AC1 * 4 + X3) + 2) >> 2);
-//         X1 = ((int32_t)AC3 * B5) >> 13;
-//         X2 = ((int32_t)B2 * ((X1 * X1) >> 12)) >> 16;
-//         X3 = ((X1 + X2) + 2) >> 2;
-//         uint32_t B4 = ((uint32_t)AC4 * (uint32_t)(X3 + 32768)) >> 15;
-//         uint32_t B7 = ((uint32_t)bmpUP - B3) * 50000;
+        bmpTemperature =
+            ((B5 + 8) >> 4) /
+            10.0f;
 
-//         int32_t pressure;
-//         if (B7 < 0x80000000)
-//             pressure = (B7 * 2) / B4;
-//         else
-//             pressure = (B7 / B4) * 2;
+        // ====================================================
+        // Start pressure
+        // ====================================================
 
-//         X1 = (pressure >> 8) * (pressure >> 8);
-//         X1 = (X1 * 3038) >> 16;
-//         X2 = (-7357 * pressure) >> 16;
-//         pressure += ((X1 + X2 + 3791) >> 4);
+        GYWire.beginTransmission(
+            0x77
+        );
 
-//         bmpPressure = pressure;
+        GYWire.write(
+            0xF4
+        );
 
-//         bmpAltitude = 44330.0f * (1.0f - powf(bmpPressure / 101325.0f, 0.1903f));
+        GYWire.write(
+            0x34
+        );
 
-//         bmpState = BMP_IDLE;
-//     }
-// }
+        if (
+            GYWire.endTransmission() != 0
+        )
+        {
+            bmpState =
+                BMP_IDLE;
+
+            return;
+        }
+
+        bmpConversionStart =
+            now;
+
+        bmpState =
+            BMP_PRESSURE_WAIT;
+    }
+
+    // ========================================================
+    // Pressure
+    // ========================================================
+
+    else if (
+        bmpState ==
+        BMP_PRESSURE_WAIT
+    )
+    {
+        if (
+            now -
+            bmpConversionStart <
+            5
+        )
+        {
+            return;
+        }
+
+        GYWire.beginTransmission(
+            0x77
+        );
+
+        GYWire.write(
+            0xF6
+        );
+
+        if (
+            GYWire.endTransmission(
+                false
+            ) != 0
+        )
+        {
+            bmpState =
+                BMP_IDLE;
+
+            return;
+        }
+
+        if (
+            GYWire.requestFrom(
+                0x77,
+                3
+            ) != 3
+        )
+        {
+            bmpState =
+                BMP_IDLE;
+
+            return;
+        }
+
+        int32_t MSB =
+            GYWire.read();
+
+        int32_t LSB =
+            GYWire.read();
+
+        int32_t XLSB =
+            GYWire.read();
+
+        bmpUP =
+            ((MSB << 16) |
+             (LSB << 8) |
+             XLSB) >>
+            8;
+
+        // ====================================================
+        // Recalculate B5
+        // ====================================================
+
+        int32_t UT =
+            bmpUT;
+
+        int32_t X1 =
+            ((UT -
+              (int32_t)AC6) *
+             (int32_t)AC5) >>
+            15;
+
+        int32_t X2 =
+            ((int32_t)MC << 11) /
+            (X1 + MD);
+
+        int32_t B5 =
+            X1 + X2;
+
+        // ====================================================
+        // Pressure calculation
+        // ====================================================
+
+        X1 =
+            ((B5 - 4000) *
+             (int32_t)AC2) >>
+            11;
+
+        X2 =
+            ((int32_t)BMP_B1 *
+             ((X1 * X1) >> 12)) >>
+            16;
+
+        int32_t X3 =
+            X1 + X2;
+
+        int32_t B3 =
+            ((((int32_t)AC1 * 4 +
+               X3) + 2) >> 2);
+
+        X1 =
+            ((int32_t)AC3 * B5) >>
+            13;
+
+        X2 =
+            ((int32_t)B2 *
+             ((X1 * X1) >> 12)) >>
+            16;
+
+        X3 =
+            ((X1 + X2) + 2) >>
+            2;
+
+        uint32_t B4 =
+            ((uint32_t)AC4 *
+             (uint32_t)(X3 + 32768)) >>
+            15;
+
+        uint32_t B7 =
+            ((uint32_t)bmpUP - B3) *
+            50000;
+
+        int32_t pressure;
+
+        if (
+            B7 < 0x80000000
+        )
+        {
+            pressure =
+                (B7 * 2) /
+                B4;
+        }
+        else
+        {
+            pressure =
+                (B7 / B4) *
+                2;
+        }
+
+        X1 =
+            (pressure >> 8) *
+            (pressure >> 8);
+
+        X1 =
+            (X1 * 3038) >>
+            16;
+
+        X2 =
+            (-7357 * pressure) >>
+            16;
+
+        pressure +=
+            ((X1 +
+              X2 +
+              3791) >>
+             4);
+
+        bmpPressure =
+            pressure;
+
+        bmpAltitude =
+            44330.0f *
+            (
+                1.0f -
+                powf(
+                    bmpPressure /
+                    101325.0f,
+                    0.1903f
+                )
+            );
+
+        bmpState =
+            BMP_IDLE;
+    }
+}
+
+*/
 
 // ============================================================
 // VIBRATION
 // ============================================================
 
-void measureVibration(){
-    int state = digitalRead(VIBRATION_PIN);
+void measureVibration()
+{
+    int state =
+        digitalRead(
+            VIBRATION_PIN
+        );
+
+    uint32_t now =
+        millis();
 
     // ========================================================
-    // BEGIN MEASUREMENT
+    // STATE CHANGE
     // ========================================================
 
     if (
-        !vibrationMeasuring &&
-        state != prevVibrationState
+        state !=
+        prevVibrationState
     )
     {
-        vibrationMeasuring = true;
-        vibrationOnes = 0;
-        vibrationZeros = 0;
-        vibrationStartTime = millis();
-        vibrationEvent = false;
+        // ----------------------------------------------------
+        // Start measurement window
+        // ----------------------------------------------------
+
+        if (!vibrationMeasuring)
+        {
+            vibrationMeasuring =
+                true;
+
+            vibrationOnes =
+                0;
+
+            vibrationZeros =
+                0;
+
+            vibrationStartTime =
+                now;
+
+            vibrationEvent =
+                false;
+        }
+
+        // ----------------------------------------------------
+        // Count the transition
+        // ----------------------------------------------------
+
+        if (
+            state ==
+            HIGH
+        )
+        {
+            vibrationOnes++;
+        }
+        else
+        {
+            vibrationZeros++;
+        }
+
+        prevVibrationState =
+            state;
     }
 
     // ========================================================
-    // COUNT TRANSITIONS
+    // FINISH 100 ms WINDOW
     // ========================================================
 
-    if (vibrationMeasuring)
+    if (
+        vibrationMeasuring &&
+        (
+            now -
+            vibrationStartTime >=
+            VIBRATION_WINDOW_MS
+        )
+    )
     {
-        if (state != prevVibrationState)
+        vibrationMeasuring =
+            false;
+
+        // ----------------------------------------------------
+        // Actual vibration detected
+        // ----------------------------------------------------
+
+        if (
+            vibrationOnes > 0 ||
+            vibrationZeros > 0
+        )
         {
-            if (state == HIGH)
-                vibrationOnes++;
-            else
-                vibrationZeros++;
-
-            prevVibrationState = state;
+            vibrationEvent =
+                true;
         }
-
-        // ====================================================
-        // END WINDOW
-        // ====================================================
-
-        if (millis() - vibrationStartTime >= VIBRATION_WINDOW_MS)
+        else
         {
-            vibrationMeasuring = false;
-            vibrationEvent = true;
+            vibrationEvent =
+                false;
+
+            vibrationOnes =
+                0;
+
+            vibrationZeros =
+                0;
         }
-    }
-    else
-    {
-        prevVibrationState = state;
     }
 }
 
@@ -2728,8 +3113,10 @@ void measureVibration(){
 // SERIAL SENSOR OUTPUT
 // ============================================================
 
-void printSensorData(){
+void printSensorData()
+{
     Serial.println();
+
     Serial.println(
         "================================================"
     );
@@ -2743,78 +3130,197 @@ void printSensorData(){
     );
 
     // ========================================================
-    // MPU6050 (now fully active)
+    // MPU6050
     // ========================================================
 
     Serial.println();
-    Serial.println("[ MPU6050 ]");
+    Serial.println(
+        "[ MPU6050 ]"
+    );
 
-    Serial.print("Acceleration (g): ");
-    Serial.print(accelX, 3); Serial.print(", ");
-    Serial.print(accelY, 3); Serial.print(", ");
-    Serial.println(accelZ, 3);
+    Serial.print(
+        "Acceleration (g): "
+    );
 
-    Serial.print("Gyroscope (deg/s): ");
-    Serial.print(gyroX, 2); Serial.print(", ");
-    Serial.print(gyroY, 2); Serial.print(", ");
-    Serial.println(gyroZ, 2);
+    Serial.print(
+        accelX,
+        3
+    );
 
-    Serial.print("Temperature: ");
-    Serial.print(mpuTemperature, 2);
-    Serial.println(" C");
+    Serial.print(", ");
+
+    Serial.print(
+        accelY,
+        3
+    );
+
+    Serial.print(", ");
+
+    Serial.println(
+        accelZ,
+        3
+    );
+
+    Serial.print(
+        "Gyroscope (deg/s): "
+    );
+
+    Serial.print(
+        gyroX,
+        2
+    );
+
+    Serial.print(", ");
+
+    Serial.print(
+        gyroY,
+        2
+    );
+
+    Serial.print(", ");
+
+    Serial.println(
+        gyroZ,
+        2
+    );
+
+    Serial.print(
+        "Temperature: "
+    );
+
+    Serial.print(
+        mpuTemperature,
+        2
+    );
+
+    Serial.println(
+        " C"
+    );
 
     // ========================================================
     // BMP180
+    // DISABLED
     // ========================================================
 
+    /*
     Serial.println();
-    Serial.println("[ BMP180 ]");
+    Serial.println(
+        "[ BMP180 ]"
+    );
 
-    Serial.print("Temperature: ");
-    Serial.print(bmpTemperature, 2);
-    Serial.println(" C");
+    Serial.print(
+        "Temperature: "
+    );
 
-    Serial.print("Pressure: ");
-    Serial.print(bmpPressure, 0);
-    Serial.println(" Pa");
+    Serial.print(
+        bmpTemperature,
+        2
+    );
 
-    Serial.print("Altitude: ");
-    Serial.print(bmpAltitude, 2);
-    Serial.println(" m");
+    Serial.println(
+        " C"
+    );
+
+    Serial.print(
+        "Pressure: "
+    );
+
+    Serial.print(
+        bmpPressure,
+        0
+    );
+
+    Serial.println(
+        " Pa"
+    );
+
+    Serial.print(
+        "Altitude: "
+    );
+
+    Serial.print(
+        bmpAltitude,
+        2
+    );
+
+    Serial.println(
+        " m"
+    );
+    */
 
     // ========================================================
     // MAX30100
     // ========================================================
 
     Serial.println();
-    Serial.println("[ MAX30100 ]");
+    Serial.println(
+        "[ MAX30100 ]"
+    );
 
-    Serial.print("Heart Rate: ");
-    Serial.print(heartRate, 1);
-    Serial.println(" BPM");
+    Serial.print(
+        "Heart Rate: "
+    );
 
-    Serial.print("SpO2: ");
-    Serial.print(spo2, 1);
-    Serial.println(" %");
+    Serial.print(
+        heartRate,
+        1
+    );
+
+    Serial.println(
+        " BPM"
+    );
+
+    Serial.print(
+        "SpO2: "
+    );
+
+    Serial.print(
+        spo2,
+        1
+    );
+
+    Serial.println(
+        " %"
+    );
 
     // ========================================================
     // VIBRATION
     // ========================================================
 
     Serial.println();
-    Serial.println("[ VIBRATION ]");
+    Serial.println(
+        "[ VIBRATION ]"
+    );
 
-    Serial.print("Transitions HIGH: ");
-    Serial.println(vibrationOnes);
+    Serial.print(
+        "Transitions HIGH: "
+    );
 
-    Serial.print("Transitions LOW: ");
-    Serial.println(vibrationZeros);
+    Serial.println(
+        vibrationOnes
+    );
 
-    Serial.print("Event: ");
-    Serial.println(vibrationEvent ? "YES" : "NO");
+    Serial.print(
+        "Transitions LOW: "
+    );
+
+    Serial.println(
+        vibrationZeros
+    );
+
+    Serial.print(
+        "Event: "
+    );
+
+    Serial.println(
+        vibrationEvent
+        ? "YES"
+        : "NO"
+    );
 
     Serial.println();
-    Serial.println("================================================");
+
+    Serial.println(
+        "================================================"
+    );
 }
-
-
