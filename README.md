@@ -29,7 +29,7 @@ A wearable, ESP32-based data logger that detects and records **fetal kicks** by 
 The device continuously watches for two things at once:
 
 1. **Mechanical vibration** on the mother's abdomen (via a SW-18010P vibration switch), and
-2. **Whole-body motion** of the mother (via a GY-87 IMU: accelerometer + gyroscope).
+2. **Whole-body motion** of the mother (via a GY-521 IMU: accelerometer + gyroscope).
 
 A **fetal kick** is inferred when a **vibration event occurs while the mother is otherwise still** (i.e. the IMU shows no significant maternal movement). The same IMU data is also intended to power **fall detection** for the pregnant woman.
 
@@ -41,7 +41,7 @@ The firmware is built for an **ESP32** and uses both CPU cores so that the timin
 
 ## How Fetal Kick Detection Works
 
-| Observation | Vibration sensor | IMU (GY-87) | Interpretation |
+| Observation | Vibration sensor | IMU (GY-521) | Interpretation |
 |---|---|---|---|
 | Fetal kick | **active** | still | **Kick** |
 | Mother moving/walking | active | **moving** | Maternal motion (not a kick) |
@@ -57,14 +57,15 @@ The vibration sensor alone cannot tell a kick apart from the mother simply movin
 | Component | Role | Interface | Status |
 |---|---|---|---|
 | **ESP32 dev board** | Main MCU (dual-core, Wi-Fi + Bluetooth) | — | Active |
-| **MAX30100** | Heart rate & SpO₂ | I²C | Active |
+| **MAX30100** | Heart rate & SpO₂ | I²C bus 0 | Active |
 | **SW-18010P** | Vibration / kick detection | Digital GPIO | Active |
-| **GY-87** (MPU6050 + HMC5883L + BMP180) | Accel / gyro / mag / barometer | I²C | **Disabled — hardware damaged** |
+| **GY-521** (MPU-6050) | Accel / gyro | I²C bus 1 | Active |
 | **microSD module** | Session storage (64 GB card) | SPI (VSPI) | Active |
+| **GY-87** (MPU6050 + HMC5883L + BMP180) | Previous IMU | I²C | **Retired — hardware damaged** |
 | **DS18B20** | Temperature | 1-Wire | Explored, not integrated |
 | **ESP-01 / ESP8266** | Alt. Wi-Fi transceiver | Serial | Explored, superseded by ESP32 Wi-Fi |
 
-The GY-87 accelerometer/gyroscope is central to the kick logic and to fall detection, but the physical module is currently damaged. The firmware keeps its columns in the data schema (zero-filled) so nothing changes when it is repaired — see [re-enabling the GY-87](#re-enabling-the-gy-87).
+The GY-87 was replaced by a **GY-521**, which carries the same MPU-6050 accelerometer/gyroscope but no magnetometer (HMC5883L) and no barometer (BMP180). Neither of those was used by the kick or fall logic, so nothing was lost — the GY-521 drops onto the same two pins and the firmware treats it as the project's IMU.
 
 ---
 
@@ -81,10 +82,12 @@ Pins as defined in the active firmware (`05_simplified_dualcore`):
 | SD — SCK | 18 |
 | SD — MISO | 19 |
 | SD — MOSI | 23 |
-| GY-87 SDA *(disabled)* | 21 |
-| GY-87 SCL *(disabled)* | 22 |
+| GY-521 SDA | 21 |
+| GY-521 SCL | 22 |
 
-The MAX30100 and the GY-87 sit on **two separate I²C buses** (different SDA/SCL pairs) so the always-on pulse oximeter is never blocked by IMU traffic. The SD card uses the VSPI bus at 20 MHz.
+The GY-521's `AD0` pin is left unconnected (or tied low), giving it I²C address `0x68`. Power it from **3V3**.
+
+The MAX30100 and the GY-521 sit on the ESP32's **two separate I²C peripherals** — `Wire` (bus 0) for the pulse oximeter, `Wire1` (bus 1) for the IMU. The pulse oximeter is polled ~1000×/s, so giving the IMU its own bus means neither sensor ever waits on the other. Both run at 400 kHz, which is the MPU-6050's maximum. The SD card uses the VSPI bus at 20 MHz.
 
 ---
 
@@ -98,11 +101,13 @@ IoT_Based_Wearable_Fetal_kick_detection_device/
 ├── 00_Testing_I2C_Communication_ESP32/    I²C bring-up (ESP32)
 ├── 00_DS18B20_Temperature/                DS18B20 first test
 ├── i2c_scanner_uno/                        I²C address scanner
-├── 01_GY-87/                               IMU bring-up
-│   ├── 00_Enabling_magnetometer/
+├── 01_6DOF/                                IMU bring-up
+│   ├── 00_Enabling_magnetometer/            (GY-87 era)
 │   ├── 01_Testing_MPU6050/
 │   ├── 02_Testing_BMP180/
-│   └── 03_reading_input/
+│   ├── 03_reading_input/
+│   ├── 04_Shifted_to_GY-521/                GY-521 sanity check (Arduino)
+│   └── 05_GY-521_on_ESP32/                  GY-521 bring-up on ESP32 bus 1
 ├── 02_ESP-01_ESP8266_..._Transceiver/     ESP-01 Wi-Fi experiments
 ├── 03_Heart_Rate_Sensor/
 │   └── sensor_testing/                     MAX30100 reference sketch
@@ -144,17 +149,16 @@ A deliberately simplified rewrite that enforces a strict split of work across th
    │  • MAX30100  pox.update()   ┌──────► • parse BT / USB commands  │
    │    (as fast as possible)    │        • drain queue → SD (CSV)   │
    │  • SW-18010P vibration      │        • (future) → Wi-Fi server  │
-   │  • GY-87 accel/gyro*        │                                   │
+   │  • GY-521 accel/gyro        │                                   │
    │        │                    │                                   │
    │        └──── FreeRTOS queue ┘  (cross-core, non-blocking)       │
    └────────────────────────────────────────────────────────────────┘
                                      │
                                      ▼
                                microSD  (/SCAN_00N.csv)
-                     * GY-87 currently disabled → columns zero-filled
 ```
 
-**Core 0 — sensing only.** Calls `pox.update()` (MAX30100) in a tight loop because that sensor's small FIFO must be serviced far faster than it fills. It also runs the non-blocking vibration window and, while a scan is active, packs each sample and pushes it onto a FreeRTOS queue. It never touches the SD card or Bluetooth.
+**Core 0 — sensing only.** Calls `pox.update()` (MAX30100) in a tight loop because that sensor's small FIFO must be serviced far faster than it fills. It also runs the non-blocking vibration window and, while a scan is active, reads the IMU, packs each sample and pushes it onto a FreeRTOS queue. It never touches the SD card or Bluetooth. Core 0 is the **only** core that talks to the IMU, so no locking is needed on `Wire1`.
 
 **Core 1 — storage & control.** The Arduino `loop()` parses commands (from Bluetooth *and* USB serial), drains the queue, and writes rows to the SD card. This is also where Wi-Fi upload will live.
 
@@ -162,7 +166,25 @@ A deliberately simplified rewrite that enforces a strict split of work across th
 
 **`vTaskDelay(1)` in the sensor loop** yields ≤1 ms each iteration so the Bluetooth stack and task watchdog stay healthy, while still calling `pox.update()` ~1000×/s — roughly 10× the sample rate, so no samples are lost.
 
-**Always-on sensors.** The MAX30100 is initialized once at boot (7.6 mA IR current, empty beat callback). `START` only opens a file and begins logging — it does **not** re-initialize the sensor — so heart rate and SpO₂ are already locked on when a session begins.
+**Always-on sensors.** The MAX30100 and the GY-521 are both initialized once at boot (MAX30100 at 7.6 mA IR current with an empty beat callback). `START` only opens a file and begins logging — it does **not** re-initialize the sensors — so heart rate and SpO₂ are already locked on when a session begins.
+
+**IMU dropout handling.** A wearable on jumper leads will lose the IMU occasionally. If a burst read fails, the firmware marks the IMU down, keeps logging rows with zeroed accel/gyro columns (so the time grid and the other sensors are never interrupted), and retries initialization every 2 s in the background. `STATUS` reports the state and a cumulative dropout count, and `START` warns if the IMU is down.
+
+### IMU configuration
+
+Set once in `imuInit()` and mirrored in `01_6DOF/05_GY-521_on_ESP32`:
+
+| Register | Value | Meaning |
+|---|---|---|
+| `PWR_MGMT_1` (0x6B) | reset, then `0x01` | Clock source = gyro X PLL (more stable than the internal 8 MHz oscillator) |
+| `CONFIG` (0x1A) | `DLPF_CFG = 3` | ~44 Hz bandwidth — passes kick/fall transients, limits aliasing at 100 Hz |
+| `SMPLRT_DIV` (0x19) | `9` | Internal ODR = 1 kHz / (1+9) = **100 Hz**, matching the log grid |
+| `GYRO_CONFIG` (0x1B) | `FS_SEL = 0` | ±250 °/s → **131 LSB/(°/s)** |
+| `ACCEL_CONFIG` (0x1C) | `AFS_SEL = 0` | ±2 g → **16384 LSB/g** |
+
+±2 g is the most sensitive range, which is what picking a faint kick out of the noise floor needs. A hard fall impact will saturate it — that saturation is itself a usable fall cue, but if fall magnitude matters more than kick sensitivity, raise `ACCEL_FS_SEL` and update the scale factor in both places.
+
+Data is read as **one 14-byte burst** from `0x3B`. `TEMP_OUT` (0x41–0x42) sits between the accel and gyro registers, so a 12-byte read silently shifts every gyro axis by one register pair — a trap worth remembering, since the accel values still look perfectly correct when it happens. The die temperature that comes free with the burst is reported by `STATUS` but not logged.
 
 ---
 
@@ -173,6 +195,8 @@ A deliberately simplified rewrite that enforces a strict split of work across th
 1. **Arduino IDE** with the **ESP32 board package** (Boards Manager → "esp32" by Espressif Systems).
 2. A **MAX30100 library** that provides `MAX30100_PulseOximeter.h` (e.g. *MAX30100lib* by OXullo Intersecans).
 3. `SD`, `SPI`, `Wire`, and `BluetoothSerial` ship with the ESP32 core — no separate install.
+
+The GY-521 is driven by direct register writes over `Wire1`, so **no MPU6050 library is needed** — one less dependency, and the exact configuration is visible in `imuInit()` instead of buried in someone else's defaults.
 
 **Steps**
 
@@ -192,12 +216,12 @@ Commands are accepted over **Bluetooth (SPP)** and over **USB serial**, are **ca
 | Command | Action | Typical response |
 |---|---|---|
 | `SD_INIT` | Mount the SD card | `SD OK` + total/used/free KB |
-| `START` | Open `/SCAN_00N.csv` and begin logging | `SCAN STARTED -> /SCAN_001.csv (10 Hz)` |
+| `START` | Open `/SCAN_00N.csv` and begin logging | `SCAN STARTED -> /SCAN_001.csv (100 Hz)` + the accel/gyro scale factors |
 | `STOP` | Stop logging; flush and close the file | `SCAN STOPPED. FILE: /SCAN_001.csv` |
 | `LIST` | List CSV files with an index and size | `0: /SCAN_001.csv (1234 B)` |
 | `READ <n>` | Stream the file at index `n` over the link | file contents between markers |
 | `SD_RELEASE` | Unmount the card (safe to remove) | `SD RELEASED` |
-| `STATUS` | Report SD/scan/queue state | `--- status ---` block |
+| `STATUS` | Report SD / scan / queue / IMU state | `--- status ---` block |
 
 **Bluetooth device name:** `ESP32_SENSOR_LOGGER`. This uses **Classic Bluetooth SPP**, so it pairs with **Android or a PC** (e.g. the "Serial Bluetooth Terminal" app), **not iPhone**.
 
@@ -210,26 +234,33 @@ Each session is written to `/SCAN_00N.csv` (auto-incrementing number). One heade
 **Columns**
 
 ```
-scan_time_ms, accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z, vibration, heart_rate, spo2
+scan_time_ms, accel_x_raw, accel_y_raw, accel_z_raw, gyro_x_raw, gyro_y_raw, gyro_z_raw, vibration, heart_rate, spo2
 ```
 
-| Column | Meaning | Now (GY-87 disabled) |
+| Column | Meaning | Unit |
 |---|---|---|
-| `scan_time_ms` | Milliseconds since `START` | ✓ |
-| `accel_x/y/z` | Accelerometer (g), GY-87 | `0` (placeholder) |
-| `gyro_x/y/z` | Gyroscope (°/s), GY-87 | `0` (placeholder) |
-| `vibration` | Transition count of the 100 ms vibration window (intensity); `0` when no vibration | ✓ |
-| `heart_rate` | Latest MAX30100 BPM | ✓ |
-| `spo2` | Latest MAX30100 SpO₂ (%) | ✓ |
+| `scan_time_ms` | Milliseconds since `START` | ms |
+| `accel_x/y/z_raw` | Accelerometer, GY-521 | **raw int16 counts** — divide by **16384** for g |
+| `gyro_x/y/z_raw` | Gyroscope, GY-521 | **raw int16 counts** — divide by **131** for °/s |
+| `vibration` | Transition count of the 100 ms vibration window (intensity); `0` when no vibration | count |
+| `heart_rate` | Latest MAX30100 BPM | BPM |
+| `spo2` | Latest MAX30100 SpO₂ | % |
 
-**Sample rate.** A single constant, `SAMPLE_INTERVAL_MS`, sets the master rate:
+**Why raw counts.** The card stores exactly what the sensor's registers held, so nothing is lost to on-device float rounding and rows stay short. The cost is that the CSV carries no units of its own — the scale factors above are the only key to the file, and they are only valid while `ACCEL_FS_SEL`/`GYRO_FS_SEL` stay at `0`. The firmware prints them on every `START`, so a session transcript always records which scaling applied. In pandas:
 
-- **10 Hz now** (`= 100` ms) — sufficient while the accelerometer is out.
-- **100 Hz** (`= 10` ms) once the GY-87 is restored — needed to separate kicks from maternal movement and to catch falls.
+```python
+df = pd.read_csv("SCAN_001.csv")
+df[["accel_x_g", "accel_y_g", "accel_z_g"]] = df[["accel_x_raw", "accel_y_raw", "accel_z_raw"]] / 16384.0
+df[["gyro_x_dps", "gyro_y_dps", "gyro_z_dps"]] = df[["gyro_x_raw", "gyro_y_raw", "gyro_z_raw"]] / 131.0
+```
 
-Heart rate and SpO₂ are written on every row (their underlying value updates ~once per second, so 10 Hz is plenty). Vibration intensity is emitted on the single row where its 100 ms window closes, and `0` otherwise.
+A resting sensor reads ≈ ±16384 on whichever axis faces gravity and ≈ 0 on the other two, so a quick sanity check on any session is that the accel magnitude sits near 16384 while the wearer is still.
 
-**Storage.** Roughly 2–3 MB/hour at 10 Hz and ~25 MB/hour at 100 Hz, so a 64 GB card holds **months** of continuous recording. The card is a durable backlog for later server upload; capacity is not a constraint.
+**Sample rate.** A single constant, `SAMPLE_INTERVAL_MS`, sets the master rate — now **10 ms = 100 Hz**, which is what separating a kick from maternal movement (and catching a fall) requires. The MPU-6050's internal output rate is configured to match at 100 Hz, so every logged row is a fresh conversion rather than the same register value read twice.
+
+Heart rate and SpO₂ are written on every row (their underlying value updates ~once per second, so they simply repeat). Vibration intensity is emitted on the single row where its 100 ms window closes, and `0` otherwise.
+
+**Storage.** Rows are ~45 bytes, so 100 Hz is roughly **16 MB/hour** — a 64 GB card holds months of continuous recording. The card is a durable backlog for later server upload; capacity is not a constraint.
 
 ---
 
@@ -245,13 +276,16 @@ You can test the entire command flow over the **USB Serial Monitor alone** — n
 **Smoke test**
 
 1. `SD_INIT` → prints card size. `SD INIT FAILED` here means wiring/card, not code.
-2. `START` → begins logging; a status line prints once per second (`t= HR= SpO2= vib= queued=`).
-3. Place a finger on the MAX30100 → HR/SpO₂ rise from 0 after ~10–15 s.
-4. Tap/shake the vibration sensor → the `vib=` value jumps, returns to 0 when still.
-5. `STOP` → finalizes the file.
-6. `LIST` → confirms the file exists.
-7. `READ 0` → dumps the CSV so you can eyeball the rows.
-8. `SD_RELEASE` → safe to remove the card.
+2. `START` → begins logging; a status line prints once per second (`t= A= G= HR= SpO2= vib= queued=`).
+3. Tilt the board → the `A=` triplet should swing, with ≈16384 on whichever axis points down. `[IMU DOWN]` at the end of the line means the GY-521 isn't answering.
+4. Place a finger on the MAX30100 → HR/SpO₂ rise from 0 after ~10–15 s.
+5. Tap/shake the vibration sensor → the `vib=` value jumps, returns to 0 when still.
+6. `STOP` → finalizes the file.
+7. `LIST` → confirms the file exists.
+8. `READ 0` → dumps the CSV so you can eyeball the rows.
+9. `SD_RELEASE` → safe to remove the card.
+
+If the IMU is the only thing misbehaving, flash `01_6DOF/05_GY-521_on_ESP32` instead — it scans I²C bus 1, prints `WHO_AM_I`, and shows raw and scaled values side by side, which isolates a wiring fault from a firmware one.
 
 For Bluetooth, pair to `ESP32_SENSOR_LOGGER` from an Android SPP terminal and send the same commands.
 
@@ -266,21 +300,17 @@ Derived from `Goal.txt`, the target is a field-deployable logger where **Bluetoo
 - **Upload bookkeeping** — track which session files are already uploaded (e.g. a `/state/` marker) so nothing is sent twice or lost.
 - **Richer diagnostics** — a `SENSORS` command returning per-sensor health (connected / last-reading age) distinct from live values.
 - **Wi-Fi provisioning over Bluetooth** — scan for SSIDs and set credentials from the app.
-- **Re-enable the GY-87** at 100 Hz for kick/movement separation and fall detection.
+- **Gyro/accel bias calibration** — record a short still-baseline at the start of a session (or a stored per-device offset) so "mother is still" can be judged against a real zero rather than the factory bias.
+- **Kick classifier** — the actual vibration-while-still detection, run offline over the CSVs first, then ported on-device once the thresholds are known.
 - **Modular refactor & binary logging** — split the firmware into managers (Sensor / Measurement / SD / WiFi / Upload / BLE) and consider a compact binary session format with an RTC timestamp.
 
-### Re-enabling the GY-87
-
-1. Uncomment the `GY_SDA (21)` / `GY_SCL (22)` defines.
-2. Initialize the MPU6050 (and BMP180 if needed) on the second I²C bus in `setup()`.
-3. In `sensorTask()`, replace the zero-fill block (marked `// --- GY-87 (add later) ---`) with real accel/gyro reads.
-4. Set `SAMPLE_INTERVAL_MS = 10` for 100 Hz. The CSV schema does not change.
+**Done:** the IMU is live again — the damaged GY-87 was replaced with a GY-521 on the same pins, and logging runs at 100 Hz with real accel/gyro columns.
 
 ---
 
 ## Development History
 
-The `00`–`06` folders are the incremental bring-up of each subsystem — I²C communication, the GY-87 IMU, the MAX30100 heart-rate sensor, the SW-18010P vibration sensor, the DS18B20 temperature probe, and ESP-01/ESP8266 Wi-Fi experiments. `07_Combined_All_Sensors` is where they were integrated, evolving from a verbose serial logger (`01_...`) through Bluetooth and Wi-Fi variants to the current simplified dual-core design (`05_...`).
+The `00`–`06` folders are the incremental bring-up of each subsystem — I²C communication, the IMU (GY-87, later GY-521), the MAX30100 heart-rate sensor, the SW-18010P vibration sensor, the DS18B20 temperature probe, and ESP-01/ESP8266 Wi-Fi experiments. `07_Combined_All_Sensors` is where they were integrated, evolving from a verbose serial logger (`01_...`) through Bluetooth and Wi-Fi variants to the current simplified dual-core design (`05_...`).
 
 ---
 
