@@ -26,10 +26,10 @@
 // Standard VSPI pins on ESP32
 // ============================================================
 
-  #define SD_CS   5
-  #define SD_SCK  18
-  #define SD_MISO 19
-  #define SD_MOSI 23
+  #define SD_CS   19
+  #define SD_SCK  21
+  #define SD_MISO 5
+  #define SD_MOSI 18
 
 // ============================================================
 // WIFI

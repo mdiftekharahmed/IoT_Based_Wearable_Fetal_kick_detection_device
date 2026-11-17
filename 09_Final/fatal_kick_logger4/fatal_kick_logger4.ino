@@ -8,7 +8,7 @@
  *   - MAX30100 heart rate / SpO2  (I2C bus 0, SDA 25 / SCL 26)
  *   - SW-18010P vibration          (GPIO 27)
  *   - GY-521 (MPU-6050) accel/gyro (I2C bus 1, SDA 21 / SCL 22 - Wire1)
- *   - SPI SD Card Module          (VSPI: CS 5, SCK 18, MISO 19, MOSI 23)
+ *   - SPI SD Card Module          (VSPI: CS 19, SCK 21, MISO 5, MOSI 18)
  *   - sensorTask() on CORE 1, always sampling into sensorQueue
  *   - loop() on CORE 1, draining sensorQueue to both Serial & SD Card
  *
@@ -33,10 +33,10 @@
   #define VIBRATION_PIN 27
 
   // SD Card Pins (VSPI Hardware Bus)
-  #define SD_CS         5
-  #define SD_SCK        18
-  #define SD_MISO       19
-  #define SD_MOSI       23
+  #define SD_CS         19
+  #define SD_SCK        21
+  #define SD_MISO       5
+  #define SD_MOSI       18
 
   // GY-521 (MPU-6050) - bus 1
   #define GY_SDA        21

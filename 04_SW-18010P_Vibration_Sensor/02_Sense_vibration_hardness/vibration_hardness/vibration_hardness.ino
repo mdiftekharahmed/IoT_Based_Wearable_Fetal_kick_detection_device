@@ -1,4 +1,4 @@
-#define SENSOR_PIN 27
+#define SENSOR_PIN 8
 int prevState;
 bool measuring = false;
 
@@ -7,7 +7,7 @@ unsigned long startTime;
 int ones = 0;
 int zeros = 0;
 
-const unsigned long WINDOW = 100;   // Measure for 100 ms after first change
+const unsigned long WINDOW = 500;   // Measure for 100 ms after first change
 
 void setup() {
   Serial.begin(115200);

@@ -1,3 +1,4 @@
+
 #include <Arduino.h>
 #include <Wire.h>
 #include <SPI.h>
@@ -15,7 +16,7 @@ BluetoothSerial SerialBT;
 // I2C PINS
 // ============================================================
 
-// GY-521 (MPU-6050)
+// GY-521 / MPU6050
 #define GY_SDA 21
 #define GY_SCL 22
 
@@ -27,10 +28,10 @@ BluetoothSerial SerialBT;
 // SD CARD
 // ============================================================
 
-#define SD_CS   5
-#define SD_SCK  18
-#define SD_MISO 19
-#define SD_MOSI 23
+#define SD_CS   19
+#define SD_SCK  21
+#define SD_MISO 5
+#define SD_MOSI 18
 
 SPIClass SD_SPI(VSPI);
 
@@ -43,20 +44,23 @@ const uint64_t MIN_FREE_SPACE = 16ULL * 1024ULL;
 #define VIBRATION_PIN 27
 
 // ============================================================
+// MPU6050
+// ============================================================
+
+#define MPU6050_ADDRESS 0x68
+
+// ============================================================
 // TIMING
 // ============================================================
 
-// MPU6050 = 100 Hz
-const uint32_t MPU_INTERVAL_MS = 10;
-
-// Heart-rate values updated once per second
+const uint32_t MPU_INTERVAL_MS = 10;          // 100 Hz
 const uint32_t HEART_REPORT_INTERVAL_MS = 1000;
-
-// Serial sensor display
 const uint32_t SERIAL_INTERVAL_MS = 1000;
-
-// SD flush
+const uint32_t BLUETOOTH_INTERVAL_MS = 1000;
 const uint32_t SD_FLUSH_INTERVAL_MS = 1000;
+
+// Vibration window
+const uint32_t VIBRATION_WINDOW_MS = 100;
 
 // ============================================================
 // MAX30100
@@ -91,26 +95,17 @@ int16_t rawMPUTemp = 0;
 // MPU6050 CALCULATED DATA
 // ============================================================
 
-float accelX = 0;
-float accelY = 0;
-float accelZ = 0;
+float accelX = 0.0;
+float accelY = 0.0;
+float accelZ = 0.0;
 
-float gyroX = 0;
-float gyroY = 0;
-float gyroZ = 0;
+float gyroX = 0.0;
+float gyroY = 0.0;
+float gyroZ = 0.0;
 
-float mpuTemperature = 0;
+float mpuTemperature = 0.0;
 
-// ============================================================
-// BMP180
-// ============================================================
-//
-// BMP180 IS NO LONGER USED.
-//
-// All BMP180 code has been disabled/removed from the active
-// system and from the CSV file.
-//
-// ============================================================
+bool mpuReady = false;
 
 // ============================================================
 // VIBRATION STATE
@@ -122,17 +117,14 @@ bool vibrationMeasuring = false;
 
 uint32_t vibrationStartTime = 0;
 
-const uint32_t VIBRATION_WINDOW_MS = 100;
+// Current 100 ms window
+volatile int vibrationOnes = 0;
+volatile int vibrationZeros = 0;
 
-// Live counters during the current measurement
-int vibrationOnes = 0;
-int vibrationZeros = 0;
+volatile bool vibrationEvent = false;
 
-// Completed event result waiting to be written
-int completedVibrationOnes = 0;
-int completedVibrationZeros = 0;
-
-bool vibrationEvent = false;
+// Used to indicate that a new 100 ms window has completed
+volatile bool vibrationWindowComplete = false;
 
 // ============================================================
 // SYSTEM STATE
@@ -219,11 +211,12 @@ QueueHandle_t sdCommandQueue;
 // ============================================================
 
 void initMPU6050();
-void readMPU6050();
+bool readMPU6050();
 
 void measureVibration();
 
 void printSensorData();
+void printBluetoothSensorData();
 
 void onBeatDetected();
 
@@ -265,7 +258,7 @@ void printSystemStatus();
 
 void onBeatDetected()
 {
-    // Keep callback extremely fast.
+    // Keep callback empty and extremely fast.
 }
 
 // ============================================================
@@ -333,41 +326,25 @@ void setup()
     }
 
     // ========================================================
-    // GY-521 / MPU6050
+    // GY-521
     // ========================================================
 
     Serial.println();
-    Serial.println("Initializing GY-521 (MPU-6050)...");
+    Serial.println("Initializing GY-521 / MPU6050...");
 
     GYWire.begin(
         GY_SDA,
         GY_SCL,
-        400000
+        100000
     );
 
-    GYWire.setClock(400000);
+    GYWire.setClock(100000);
 
     Serial.println(
-        "GY-521 I2C initialized on bus 1 (SDA 21 / SCL 22)"
+        "GY-521 I2C: SDA=21 SCL=22"
     );
 
     initMPU6050();
-
-    // ========================================================
-    // BMP180
-    // ========================================================
-    //
-    // BMP180 IS NO LONGER PART OF THE SYSTEM.
-    //
-    // No BMP180 initialization is performed.
-    // No BMP180 values are written to the CSV.
-    //
-    // ========================================================
-
-    Serial.println();
-    Serial.println(
-        "BMP180 DISABLED / REMOVED"
-    );
 
     // ========================================================
     // VIBRATION
@@ -383,19 +360,28 @@ void setup()
             VIBRATION_PIN
         );
 
-    // Make sure all vibration values start at zero.
+    vibrationMeasuring = false;
+
+    vibrationStartTime = millis();
+
     vibrationOnes = 0;
     vibrationZeros = 0;
 
-    completedVibrationOnes = 0;
-    completedVibrationZeros = 0;
-
     vibrationEvent = false;
-    vibrationMeasuring = false;
 
     Serial.println();
     Serial.println(
         "Vibration sensor ready"
+    );
+
+    Serial.print(
+        "Initial vibration state: "
+    );
+
+    Serial.println(
+        prevVibrationState == HIGH
+        ? "HIGH"
+        : "LOW"
     );
 
     // ========================================================
@@ -481,7 +467,6 @@ void setup()
     Serial.println();
     Serial.println("Bluetooth commands:");
     Serial.println();
-
     Serial.println("SD_INIT");
     Serial.println("START");
     Serial.println("STOP");
@@ -514,10 +499,7 @@ void processBluetoothCommands()
     {
         char c = SerialBT.read();
 
-        if (
-            c == '\n' ||
-            c == '\r'
-        )
+        if (c == '\n' || c == '\r')
         {
             if (command.length() > 0)
             {
@@ -730,9 +712,7 @@ void processBluetoothCommands()
 // BLUETOOTH SEND
 // ============================================================
 
-void sendBluetooth(
-    const String &message
-)
+void sendBluetooth(const String &message)
 {
     SerialBT.println(message);
 
@@ -757,6 +737,9 @@ void sensorTask(void *parameter)
     uint32_t lastSerial =
         millis();
 
+    uint32_t lastBluetooth =
+        millis();
+
     while (true)
     {
         uint32_t now =
@@ -764,18 +747,26 @@ void sensorTask(void *parameter)
 
         // ========================================================
         // MAX30100
+        //
+        // MUST RUN CONTINUOUSLY
         // ========================================================
 
         pox.update();
 
         // ========================================================
         // VIBRATION
+        //
+        // NON-BLOCKING
+        //
+        // This function executes quickly and returns.
+        // There is NO delay(100) here.
         // ========================================================
 
         measureVibration();
 
         // ========================================================
         // MPU6050
+        //
         // 100 Hz
         // ========================================================
 
@@ -822,29 +813,17 @@ void sensorTask(void *parameter)
                 data.mpuTemperature =
                     mpuTemperature;
 
-                // =================================================
-                // NO BMP180
-                // =================================================
-                //
-                // BMP180 fields no longer exist in SensorData.
-                //
-                // =================================================
-
                 data.heartRate =
                     heartRate;
 
                 data.spo2 =
                     spo2;
 
-                // =================================================
-                // VIBRATION
-                // =================================================
-
                 data.vibrationOnes =
-                    completedVibrationOnes;
+                    vibrationOnes;
 
                 data.vibrationZeros =
-                    completedVibrationZeros;
+                    vibrationZeros;
 
                 data.vibrationEvent =
                     vibrationEvent;
@@ -866,21 +845,9 @@ void sensorTask(void *parameter)
                     );
                 }
 
-                // =================================================
-                // CLEAR COMPLETED VIBRATION RESULT
-                // =================================================
-
-                if (vibrationEvent)
-                {
-                    vibrationEvent =
-                        false;
-
-                    completedVibrationOnes =
-                        0;
-
-                    completedVibrationZeros =
-                        0;
-                }
+                // Event is only for this sample.
+                vibrationEvent =
+                    false;
             }
         }
 
@@ -922,10 +889,13 @@ void sensorTask(void *parameter)
         }
 
         // ========================================================
-        // SERIAL OUTPUT
+        // SERIAL SENSOR OUTPUT
+        //
+        // ONLY DURING SCAN
         // ========================================================
 
         if (
+            scanning &&
             now - lastSerial >=
             SERIAL_INTERVAL_MS
         )
@@ -934,6 +904,27 @@ void sensorTask(void *parameter)
                 SERIAL_INTERVAL_MS;
 
             printSensorData();
+        }
+
+        // ========================================================
+        // BLUETOOTH SENSOR OUTPUT
+        //
+        // ONLY DURING SCAN
+        //
+        // 1 Hz so Bluetooth doesn't interfere with 100 Hz
+        // sensor acquisition.
+        // ========================================================
+
+        if (
+            scanning &&
+            now - lastBluetooth >=
+            BLUETOOTH_INTERVAL_MS
+        )
+        {
+            lastBluetooth +=
+                BLUETOOTH_INTERVAL_MS;
+
+            printBluetoothSensorData();
         }
 
         // ========================================================
@@ -1215,6 +1206,8 @@ void sdTask(void *parameter)
 
         // ========================================================
         // STOPPED SCAN
+        //
+        // Drain remaining samples first.
         // ========================================================
 
         if (
@@ -1468,16 +1461,15 @@ void startScan(File &currentFile)
     }
 
     // ========================================================
-    // RESET VIBRATION STATE FOR NEW SCAN
+    // CLEAR OLD VIBRATION WINDOW
     // ========================================================
 
     vibrationOnes = 0;
     vibrationZeros = 0;
 
-    completedVibrationOnes = 0;
-    completedVibrationZeros = 0;
-
     vibrationEvent = false;
+
+    vibrationWindowComplete = false;
 
     vibrationMeasuring = false;
 
@@ -1485,6 +1477,9 @@ void startScan(File &currentFile)
         digitalRead(
             VIBRATION_PIN
         );
+
+    vibrationStartTime =
+        millis();
 
     // ========================================================
     // FIND NEXT FILE
@@ -1564,16 +1559,16 @@ void startScan(File &currentFile)
     );
 
     sendBluetooth(
+        "BLUETOOTH SENSOR LOG: 1 Hz"
+    );
+
+    sendBluetooth(
         "================================"
     );
 }
 
 // ============================================================
 // CSV HEADER
-// ============================================================
-//
-// BMP180 IS NOT INCLUDED.
-//
 // ============================================================
 
 void writeCSVHeader(File &file)
@@ -1609,19 +1604,11 @@ bool writeSensorData(
         return false;
     }
 
-    // ========================================================
-    // SCAN TIME
-    // ========================================================
-
     file.print(
         data.scanTime
     );
 
     file.print(",");
-
-    // ========================================================
-    // ACCELEROMETER
-    // ========================================================
 
     file.print(
         data.accelX,
@@ -1644,10 +1631,6 @@ bool writeSensorData(
 
     file.print(",");
 
-    // ========================================================
-    // GYROSCOPE
-    // ========================================================
-
     file.print(
         data.gyroX,
         3
@@ -1669,20 +1652,12 @@ bool writeSensorData(
 
     file.print(",");
 
-    // ========================================================
-    // MPU TEMPERATURE
-    // ========================================================
-
     file.print(
         data.mpuTemperature,
         2
     );
 
     file.print(",");
-
-    // ========================================================
-    // MAX30100
-    // ========================================================
 
     file.print(
         data.heartRate,
@@ -1697,10 +1672,6 @@ bool writeSensorData(
     );
 
     file.print(",");
-
-    // ========================================================
-    // VIBRATION
-    // ========================================================
 
     file.print(
         data.vibrationEvent
@@ -1761,12 +1732,10 @@ bool writeSensorData(
     }
 
     // ========================================================
-    // FILE WRITE ERROR CHECK
+    // FILE WRITE ERROR
     // ========================================================
 
-    if (
-        file.getWriteError()
-    )
+    if (file.getWriteError())
     {
         return false;
     }
@@ -2039,10 +2008,6 @@ void readScanFile(
 
     root.close();
 
-    // ========================================================
-    // INVALID INDEX
-    // ========================================================
-
     if (
         selectedFilename.length() == 0
     )
@@ -2053,10 +2018,6 @@ void readScanFile(
 
         return;
     }
-
-    // ========================================================
-    // OPEN
-    // ========================================================
 
     File selected =
         SD.open(
@@ -2085,10 +2046,6 @@ void readScanFile(
     sendBluetooth(
         "================================"
     );
-
-    // ========================================================
-    // STREAM
-    // ========================================================
 
     uint8_t buffer[128];
 
@@ -2141,7 +2098,6 @@ void readScanFile(
 void printSystemStatus()
 {
     SerialBT.println();
-
     SerialBT.println(
         "========== STATUS =========="
     );
@@ -2167,6 +2123,16 @@ void printSystemStatus()
     );
 
     SerialBT.print(
+        "MPU6050: "
+    );
+
+    SerialBT.println(
+        mpuReady
+        ? "READY"
+        : "NOT READY"
+    );
+
+    SerialBT.print(
         "Writer: "
     );
 
@@ -2187,25 +2153,11 @@ void printSystemStatus()
     );
 
     SerialBT.print(
-        "SD full: "
-    );
-
-    SerialBT.println(
-        sdFull
-        ? "YES"
-        : "NO"
-    );
-
-    // ========================================================
-    // VIBRATION STATUS
-    // ========================================================
-
-    SerialBT.print(
         "Vibration HIGH: "
     );
 
     SerialBT.println(
-        completedVibrationOnes
+        vibrationOnes
     );
 
     SerialBT.print(
@@ -2213,7 +2165,7 @@ void printSystemStatus()
     );
 
     SerialBT.println(
-        completedVibrationZeros
+        vibrationZeros
     );
 
     SerialBT.print(
@@ -2226,9 +2178,15 @@ void printSystemStatus()
         : "NO"
     );
 
-    // ========================================================
-    // SD SPACE
-    // ========================================================
+    SerialBT.print(
+        "SD full: "
+    );
+
+    SerialBT.println(
+        sdFull
+        ? "YES"
+        : "NO"
+    );
 
     if (sdInitialized)
     {
@@ -2263,40 +2221,145 @@ void printSystemStatus()
 }
 
 // ============================================================
-// GY-521 / MPU6050 CONFIGURATION
+// MPU6050 INITIALIZATION
 // ============================================================
 
 void initMPU6050()
 {
     Serial.print(
-        "Initializing MPU-6050... "
+        "Checking MPU6050 at 0x68... "
     );
 
     GYWire.beginTransmission(
-        0x68
+        MPU6050_ADDRESS
     );
 
-    if (
-        GYWire.endTransmission() != 0
-    )
-    {
-        Serial.println(
-            "FAILED"
+    uint8_t error =
+        GYWire.endTransmission(
+            true
         );
+
+    if (error != 0)
+    {
+        Serial.print(
+            "FAILED, I2C error = "
+        );
+
+        Serial.println(
+            error
+        );
+
+        Serial.println(
+            "Check GY-521 VCC, GND, SDA=21, SCL=22"
+        );
+
+        mpuReady =
+            false;
 
         return;
     }
 
     Serial.println(
-        "OK"
+        "DEVICE FOUND"
     );
+
+    // ========================================================
+    // WHO_AM_I
+    // ========================================================
+
+    GYWire.beginTransmission(
+        MPU6050_ADDRESS
+    );
+
+    GYWire.write(
+        0x75
+    );
+
+    if (
+        GYWire.endTransmission(
+            false
+        ) != 0
+    )
+    {
+        Serial.println(
+            "MPU6050 WHO_AM_I REQUEST FAILED"
+        );
+
+        mpuReady =
+            false;
+
+        return;
+    }
+
+    uint8_t received =
+        GYWire.requestFrom(
+            MPU6050_ADDRESS,
+            (uint8_t)1,
+            (uint8_t)true
+        );
+
+    if (received != 1)
+    {
+        Serial.println(
+            "MPU6050 WHO_AM_I READ FAILED"
+        );
+
+        mpuReady =
+            false;
+
+        return;
+    }
+
+    uint8_t whoAmI =
+        GYWire.read();
+
+    Serial.print(
+        "MPU6050 WHO_AM_I = 0x"
+    );
+
+    Serial.println(
+        whoAmI,
+        HEX
+    );
+
+    if (
+        whoAmI != 0x68 &&
+        whoAmI != 0x69
+    )
+    {
+        Serial.println(
+            "WARNING: UNEXPECTED MPU6050 WHO_AM_I"
+        );
+    }
+
+    // ========================================================
+    // RESET MPU6050
+    // ========================================================
+
+    GYWire.beginTransmission(
+        MPU6050_ADDRESS
+    );
+
+    GYWire.write(
+        0x6B
+    );
+
+    GYWire.write(
+        0x80
+    );
+
+    GYWire.endTransmission(
+        true
+    );
+
+    delay(100);
 
     // ========================================================
     // WAKE MPU6050
     // ========================================================
 
     GYWire.beginTransmission(
-        0x68
+        MPU6050_ADDRESS
     );
 
     GYWire.write(
@@ -2307,14 +2370,19 @@ void initMPU6050()
         0x00
     );
 
-    GYWire.endTransmission();
+    GYWire.endTransmission(
+        true
+    );
 
     // ========================================================
     // ACCELEROMETER +/-8G
+    //
+    // Register 0x1C
+    // 0x10 = +/-8G
     // ========================================================
 
     GYWire.beginTransmission(
-        0x68
+        MPU6050_ADDRESS
     );
 
     GYWire.write(
@@ -2325,14 +2393,19 @@ void initMPU6050()
         0x10
     );
 
-    GYWire.endTransmission();
+    GYWire.endTransmission(
+        true
+    );
 
     // ========================================================
-    // GYROSCOPE +/-500 deg/s
+    // GYROSCOPE +/-500 DEG/S
+    //
+    // Register 0x1B
+    // 0x08 = +/-500 deg/s
     // ========================================================
 
     GYWire.beginTransmission(
-        0x68
+        MPU6050_ADDRESS
     );
 
     GYWire.write(
@@ -2343,14 +2416,18 @@ void initMPU6050()
         0x08
     );
 
-    GYWire.endTransmission();
+    GYWire.endTransmission(
+        true
+    );
 
     // ========================================================
-    // DIGITAL LOW PASS FILTER 44 Hz
+    // DIGITAL LOW PASS FILTER
+    //
+    // 0x03 = approximately 44 Hz
     // ========================================================
 
     GYWire.beginTransmission(
-        0x68
+        MPU6050_ADDRESS
     );
 
     GYWire.write(
@@ -2361,21 +2438,32 @@ void initMPU6050()
         0x03
     );
 
-    GYWire.endTransmission();
+    GYWire.endTransmission(
+        true
+    );
+
+    delay(50);
+
+    mpuReady =
+        true;
 
     Serial.println(
-        "MPU6050 configured"
+        "MPU6050 configured successfully"
     );
 }
 
 // ============================================================
-// READ MPU6050
+// MPU6050 READ
 // ============================================================
 
-void readMPU6050()
+bool readMPU6050()
 {
+    // ========================================================
+    // REQUEST ACCELEROMETER REGISTER
+    // ========================================================
+
     GYWire.beginTransmission(
-        0x68
+        MPU6050_ADDRESS
     );
 
     GYWire.write(
@@ -2388,21 +2476,74 @@ void readMPU6050()
         ) != 0
     )
     {
-        return;
+        static uint32_t lastErrorPrint = 0;
+
+        if (
+            millis() - lastErrorPrint >=
+            1000
+        )
+        {
+            Serial.println(
+                "MPU READ FAILED: register request"
+            );
+
+            lastErrorPrint =
+                millis();
+        }
+
+        mpuReady =
+            false;
+
+        return false;
     }
+
+    // ========================================================
+    // READ 14 BYTES
+    //
+    // ACCEL X/Y/Z
+    // TEMP
+    // GYRO X/Y/Z
+    // ========================================================
 
     uint8_t received =
         GYWire.requestFrom(
-            0x68,
-            14
+            MPU6050_ADDRESS,
+            (uint8_t)14,
+            (uint8_t)true
         );
 
     if (
         received != 14
     )
     {
-        return;
+        static uint32_t lastErrorPrint = 0;
+
+        if (
+            millis() - lastErrorPrint >=
+            1000
+        )
+        {
+            Serial.print(
+                "MPU READ FAILED: expected 14 bytes, got "
+            );
+
+            Serial.println(
+                received
+            );
+
+            lastErrorPrint =
+                millis();
+        }
+
+        mpuReady =
+            false;
+
+        return false;
     }
+
+    // ========================================================
+    // RAW ACCELEROMETER
+    // ========================================================
 
     rawAX =
         ((int16_t)GYWire.read() << 8) |
@@ -2416,9 +2557,17 @@ void readMPU6050()
         ((int16_t)GYWire.read() << 8) |
         GYWire.read();
 
+    // ========================================================
+    // RAW TEMPERATURE
+    // ========================================================
+
     rawMPUTemp =
         ((int16_t)GYWire.read() << 8) |
         GYWire.read();
+
+    // ========================================================
+    // RAW GYROSCOPE
+    // ========================================================
 
     rawGX =
         ((int16_t)GYWire.read() << 8) |
@@ -2433,7 +2582,9 @@ void readMPU6050()
         GYWire.read();
 
     // ========================================================
-    // +/-8G
+    // CONVERT ACCELEROMETER
+    //
+    // +/-8G = 4096 LSB/G
     // ========================================================
 
     accelX =
@@ -2446,7 +2597,9 @@ void readMPU6050()
         rawAZ / 4096.0f;
 
     // ========================================================
-    // +/-500 deg/s
+    // CONVERT GYROSCOPE
+    //
+    // +/-500 deg/s = 65.5 LSB/(deg/s)
     // ========================================================
 
     gyroX =
@@ -2465,43 +2618,49 @@ void readMPU6050()
     mpuTemperature =
         (rawMPUTemp / 340.0f) +
         36.53f;
+
+    mpuReady =
+        true;
+
+    return true;
 }
 
 // ============================================================
-// VIBRATION MEASUREMENT
-// ============================================================
+// VIBRATION
 //
-// The SW-18010P is treated as a digital transition sensor.
+// NON-BLOCKING 100 ms WINDOW
 //
-// A transition starts a 100 ms measurement window.
-// During that window every HIGH/LOW transition is counted.
+// The function does NOT wait 100 ms.
 //
-// When the window finishes:
+// It gets called repeatedly from sensorTask:
 //
-//   completedVibrationOnes
-//   completedVibrationZeros
+//   measureVibration()
+//   pox.update()
+//   measureVibration()
+//   readMPU6050()
+//   ...
 //
-// receive the result.
+// If a vibration occurs, transitions are accumulated.
 //
-// The live counters are then reset.
+// When 100 ms expires:
 //
-// The completed result is consumed by the next 100 Hz
-// SensorData sample.
-//
-// After that sample is queued, the completed values are
-// reset to zero.
+//   current HIGH/LOW counts represent that window
+//   the next window starts with counters reset to zero
 //
 // ============================================================
 
 void measureVibration()
 {
+    uint32_t now =
+        millis();
+
     int state =
         digitalRead(
             VIBRATION_PIN
         );
 
     // ========================================================
-    // START NEW VIBRATION MEASUREMENT
+    // START NEW WINDOW WHEN STATE CHANGES
     // ========================================================
 
     if (
@@ -2519,26 +2678,43 @@ void measureVibration()
             0;
 
         vibrationStartTime =
-            millis();
+            now;
 
         vibrationEvent =
             false;
+
+        vibrationWindowComplete =
+            false;
+
+        // Count the first transition
+        if (state == HIGH)
+        {
+            vibrationOnes++;
+        }
+        else
+        {
+            vibrationZeros++;
+        }
+
+        prevVibrationState =
+            state;
     }
 
     // ========================================================
-    // COUNT TRANSITIONS
+    // CURRENT WINDOW
     // ========================================================
 
     if (vibrationMeasuring)
     {
+        // ----------------------------------------------------
+        // Detect transitions
+        // ----------------------------------------------------
+
         if (
-            state !=
-            prevVibrationState
+            state != prevVibrationState
         )
         {
-            if (
-                state == HIGH
-            )
+            if (state == HIGH)
             {
                 vibrationOnes++;
             }
@@ -2551,12 +2727,12 @@ void measureVibration()
                 state;
         }
 
-        // ====================================================
+        // ----------------------------------------------------
         // END 100 ms WINDOW
-        // ====================================================
+        // ----------------------------------------------------
 
         if (
-            millis() -
+            now -
             vibrationStartTime >=
             VIBRATION_WINDOW_MS
         )
@@ -2564,43 +2740,86 @@ void measureVibration()
             vibrationMeasuring =
                 false;
 
-            // Save the completed result.
-            completedVibrationOnes =
-                vibrationOnes;
-
-            completedVibrationZeros =
-                vibrationZeros;
-
             vibrationEvent =
                 true;
 
-            // Clear live counters.
+            vibrationWindowComplete =
+                true;
+
+            // IMPORTANT:
+            //
+            // Do NOT reset counters here.
+            //
+            // They represent the completed 100 ms window
+            // and are needed by the current sensor sample.
+            //
+            // They will be reset when the NEXT vibration
+            // window begins.
+        }
+    }
+    else
+    {
+        // Keep tracking the current physical state.
+        prevVibrationState =
+            state;
+    }
+
+    // ========================================================
+    // RESET AFTER COMPLETED WINDOW HAS BEEN CONSUMED
+    //
+    // If there is no new vibration after the completed
+    // window, the values must become ZERO.
+    // ========================================================
+
+    if (
+        !vibrationMeasuring &&
+        vibrationWindowComplete &&
+        state == prevVibrationState
+    )
+    {
+        static uint32_t completedWindowTime = 0;
+
+        if (completedWindowTime == 0)
+        {
+            completedWindowTime =
+                now;
+        }
+
+        // Give the current completed-window sample time
+        // to be logged, then reset.
+        if (
+            now -
+            completedWindowTime >=
+            10
+        )
+        {
             vibrationOnes =
                 0;
 
             vibrationZeros =
                 0;
-        }
-    }
-    else
-    {
-        // ====================================================
-        // NO ACTIVE VIBRATION MEASUREMENT
-        // ====================================================
 
-        prevVibrationState =
-            state;
+            vibrationEvent =
+                false;
+
+            vibrationWindowComplete =
+                false;
+
+            completedWindowTime =
+                0;
+        }
     }
 }
 
 // ============================================================
 // SERIAL SENSOR OUTPUT
+//
+// ONLY CALLED WHILE SCANNING
 // ============================================================
 
 void printSensorData()
 {
     Serial.println();
-
     Serial.println(
         "================================================"
     );
@@ -2618,8 +2837,16 @@ void printSensorData()
     // ========================================================
 
     Serial.println();
+    Serial.println("[ MPU6050 / GY-521 ]");
+
+    Serial.print(
+        "Status: "
+    );
+
     Serial.println(
-        "[ MPU6050 ]"
+        mpuReady
+        ? "OK"
+        : "ERROR"
     );
 
     Serial.print(
@@ -2682,21 +2909,11 @@ void printSensorData()
     );
 
     // ========================================================
-    // BMP180
-    // ========================================================
-    //
-    // REMOVED.
-    //
-    // ========================================================
-
-    // ========================================================
     // MAX30100
     // ========================================================
 
     Serial.println();
-    Serial.println(
-        "[ MAX30100 ]"
-    );
+    Serial.println("[ MAX30100 ]");
 
     Serial.print(
         "Heart Rate: "
@@ -2729,24 +2946,22 @@ void printSensorData()
     // ========================================================
 
     Serial.println();
+    Serial.println("[ VIBRATION - 100 ms WINDOW ]");
+
+    Serial.print(
+        "HIGH transitions: "
+    );
+
     Serial.println(
-        "[ VIBRATION ]"
+        vibrationOnes
     );
 
     Serial.print(
-        "Transitions HIGH: "
+        "LOW transitions: "
     );
 
     Serial.println(
-        completedVibrationOnes
-    );
-
-    Serial.print(
-        "Transitions LOW: "
-    );
-
-    Serial.println(
-        completedVibrationZeros
+        vibrationZeros
     );
 
     Serial.print(
@@ -2760,8 +2975,198 @@ void printSensorData()
     );
 
     Serial.println();
-
     Serial.println(
         "================================================"
     );
 }
+
+// ============================================================
+// BLUETOOTH SENSOR OUTPUT
+//
+// ONLY DURING SCAN
+// 1 Hz
+//
+// This intentionally sends a summary rather than the full
+// 100 Hz data stream.
+//
+// SD still receives the 100 Hz samples.
+// ============================================================
+
+void printBluetoothSensorData()
+{
+    if (!scanning)
+    {
+        return;
+    }
+
+    SerialBT.println();
+    SerialBT.println(
+        "========== SENSOR DATA =========="
+    );
+
+    SerialBT.print(
+        "Time: "
+    );
+
+    SerialBT.print(
+        millis() -
+        scanStartTime
+    );
+
+    SerialBT.println(
+        " ms"
+    );
+
+    // ========================================================
+    // MPU6050
+    // ========================================================
+
+    SerialBT.println();
+    SerialBT.println(
+        "[ MPU6050 / GY-521 ]"
+    );
+
+    SerialBT.print(
+        "Status: "
+    );
+
+    SerialBT.println(
+        mpuReady
+        ? "OK"
+        : "ERROR"
+    );
+
+    SerialBT.print(
+        "Accel: "
+    );
+
+    SerialBT.print(
+        accelX,
+        3
+    );
+
+    SerialBT.print(", ");
+
+    SerialBT.print(
+        accelY,
+        3
+    );
+
+    SerialBT.print(", ");
+
+    SerialBT.println(
+        accelZ,
+        3
+    );
+
+    SerialBT.print(
+        "Gyro: "
+    );
+
+    SerialBT.print(
+        gyroX,
+        2
+    );
+
+    SerialBT.print(", ");
+
+    SerialBT.print(
+        gyroY,
+        2
+    );
+
+    SerialBT.print(", ");
+
+    SerialBT.println(
+        gyroZ,
+        2
+    );
+
+    SerialBT.print(
+        "Temperature: "
+    );
+
+    SerialBT.print(
+        mpuTemperature,
+        2
+    );
+
+    SerialBT.println(
+        " C"
+    );
+
+    // ========================================================
+    // MAX30100
+    // ========================================================
+
+    SerialBT.println();
+    SerialBT.println(
+        "[ MAX30100 ]"
+    );
+
+    SerialBT.print(
+        "Heart Rate: "
+    );
+
+    SerialBT.print(
+        heartRate,
+        1
+    );
+
+    SerialBT.println(
+        " BPM"
+    );
+
+    SerialBT.print(
+        "SpO2: "
+    );
+
+    SerialBT.print(
+        spo2,
+        1
+    );
+
+    SerialBT.println(
+        " %"
+    );
+
+    // ========================================================
+    // VIBRATION
+    // ========================================================
+
+    SerialBT.println();
+    SerialBT.println(
+        "[ VIBRATION - 100 ms WINDOW ]"
+    );
+
+    SerialBT.print(
+        "HIGH: "
+    );
+
+    SerialBT.println(
+        vibrationOnes
+    );
+
+    SerialBT.print(
+        "LOW: "
+    );
+
+    SerialBT.println(
+        vibrationZeros
+    );
+
+    SerialBT.print(
+        "Event: "
+    );
+
+    SerialBT.println(
+        vibrationEvent
+        ? "YES"
+        : "NO"
+    );
+
+    SerialBT.println(
+        "================================="
+    );
+}
+ 

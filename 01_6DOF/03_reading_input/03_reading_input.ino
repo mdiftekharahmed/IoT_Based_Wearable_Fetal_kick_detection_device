@@ -3,8 +3,8 @@
 #include<Adafruit_Sensor.h>
 #include<Adafruit_BMP085.h>
 
-#define SDA_PIN 21
-#define SCL_PIN 22
+#define SDA_PIN 22
+#define SCL_PIN 23
 
 Adafruit_MPU6050 mpu;
 Adafruit_BMP085 bmp;

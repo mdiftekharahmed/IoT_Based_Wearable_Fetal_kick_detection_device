@@ -61,10 +61,10 @@
   #define VIBRATION_PIN 27
 
   // ---- SD WRITE DISABLED (Stage 2) ----
-  #define SD_CS   5
-  #define SD_SCK  18
-  #define SD_MISO 19
-  #define SD_MOSI 23
+  #define SD_CS   19
+  #define SD_SCK  21
+  #define SD_MISO 5
+  #define SD_MOSI 18
 
   // GY-521 (MPU-6050) - bus 1, its own peripheral (see header note)
   #define GY_SDA 21

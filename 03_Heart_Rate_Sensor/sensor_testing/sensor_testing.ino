@@ -1,8 +1,8 @@
 #include <Wire.h>
 #include "MAX30100_PulseOximeter.h"
 
-#define SDA_PIN 25
-#define SCL_PIN 26
+#define SDA_PIN 26
+#define SCL_PIN 25
 
 #define REPORTING_PERIOD_MS 1000
 

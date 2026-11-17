@@ -44,10 +44,10 @@
   #define MAX_SCL 26
   #define VIBRATION_PIN 27
 
-  #define SD_CS   5
-  #define SD_SCK  18
-  #define SD_MISO 19
-  #define SD_MOSI 23
+  #define SD_CS   19
+  #define SD_SCK  21
+  #define SD_MISO 5
+  #define SD_MOSI 18
 
   // GY-87 (add later - hardware damaged)
   // #define GY_SDA 21

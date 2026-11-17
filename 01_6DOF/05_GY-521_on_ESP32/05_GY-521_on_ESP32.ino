@@ -33,8 +33,8 @@
 #include <Wire.h>
 
 // ---------------------------------------------------------------- pins
-  #define GY_SDA 21
-  #define GY_SCL 22
+  #define GY_SDA 22
+  #define GY_SCL 23
 
 // ------------------------------------------------------- MPU-6050 regs
   #define MPU_ADDR        0x68
@@ -76,6 +76,8 @@
 // ------------------------------------------------------------- state
   TwoWire &GYWire = Wire1;                  // second hardware I2C peripheral
   bool     imuOk  = false;
+
+    uint8_t  whoAmI = 0;
 
 // ------------------------------------------------------------ helpers
   bool writeReg(uint8_t reg, uint8_t val) {
